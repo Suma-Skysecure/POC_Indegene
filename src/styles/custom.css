@@ -1,0 +1,4 @@
+/* Custom styles */
+.dashboard-card {
+    @apply bg-white p-4 rounded shadow;
+}
