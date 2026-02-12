@@ -144,7 +144,7 @@ export default function LicenseInventoryPage() {
                 />
                 <LicenseStatCard
                     title="Total Annual Spend"
-                    value="$2.4M"
+                    value="₹2.4M"
                     subtext="FY24 Budget"
                 />
             </div>
@@ -156,14 +156,14 @@ export default function LicenseInventoryPage() {
                     <input
                         type="text"
                         placeholder="Filter by tool or vendor name..."
-                        className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                        className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm text-gray-900 placeholder:text-gray-500 font-medium"
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                     />
                 </div>
                 <div className="flex space-x-3">
                     <select
-                        className="border border-gray-200 rounded-lg py-2 pl-3 pr-8 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white min-w-[140px]"
+                        className="border border-gray-200 rounded-lg py-2 pl-3 pr-8 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white min-w-[140px] text-gray-900 font-semibold"
                         value={vendorFilter}
                         onChange={(e) => setVendorFilter(e.target.value)}
                     >
@@ -173,7 +173,7 @@ export default function LicenseInventoryPage() {
                         <option>Salesforce</option>
                     </select>
                     <select
-                        className="border border-gray-200 rounded-lg py-2 pl-3 pr-8 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white min-w-[140px]"
+                        className="border border-gray-200 rounded-lg py-2 pl-3 pr-8 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white min-w-[140px] text-gray-900 font-semibold"
                         value={statusFilter}
                         onChange={(e) => setStatusFilter(e.target.value)}
                     >
