@@ -24,3 +24,9 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Hide Next.js Dev Overlay/Indicator */
+nextjs-portal,
+#nextjs-dev-overlay {
+  display: none !important;
+}
