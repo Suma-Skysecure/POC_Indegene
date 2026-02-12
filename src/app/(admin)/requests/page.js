@@ -3,7 +3,8 @@
 import React, { useState } from 'react';
 import { requestsData } from '@/data/mockData';
 import Table from '@/components/Table';
-import { Search, Plus, Filter, Download, Clock, CheckCircle, Hourglass, AlertTriangle, MoreVertical } from 'lucide-react';
+import RequestDetailsSidebar from '@/components/RequestDetailsSidebar';
+import { Search, Filter, Download, Clock, CheckCircle, Hourglass, AlertTriangle, CheckSquare, XSquare } from 'lucide-react';
 import clsx from 'clsx';
 import Link from 'next/link';
 
@@ -21,13 +22,49 @@ const StatCard = ({ title, value, icon: Icon, colorClass, bgClass }) => (
 );
 
 export default function RequestsPage() {
+    const [currentRequests, setCurrentRequests] = useState(requestsData);
     const [searchTerm, setSearchTerm] = useState('');
     const [filterType, setFilterType] = useState('All Types');
     const [filterStatus, setFilterStatus] = useState('All Status');
     const [filterRisk, setFilterRisk] = useState('All Risks');
+    const [selectedRequest, setSelectedRequest] = useState(null);
+    const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+
+    const showNotification = (message, type = 'success') => {
+        setToast({ show: true, message, type });
+        setTimeout(() => setToast({ show: false, message: '', type: 'success' }), 3000);
+    };
+
+    const handleApprove = (id) => {
+        setCurrentRequests(prev => prev.map(item =>
+            item.id === id ? { ...item, status: 'Approved' } : item
+        ));
+        if (selectedRequest && selectedRequest.id === id) {
+            setSelectedRequest(prev => ({ ...prev, status: 'Approved' }));
+        }
+        showNotification('Request approved successfully!');
+    };
+
+    const handleReject = (id) => {
+        setCurrentRequests(prev => prev.map(item =>
+            item.id === id ? { ...item, status: 'Rejected' } : item
+        ));
+        if (selectedRequest && selectedRequest.id === id) {
+            setSelectedRequest(prev => ({ ...prev, status: 'Rejected' }));
+        }
+        showNotification('Request rejected successfully!', 'error');
+    };
+
+    const handleRequestClick = (request) => {
+        setSelectedRequest(request);
+    };
+
+    const closeSidebar = () => {
+        setSelectedRequest(null);
+    };
 
     // Filter Logic
-    const filteredData = requestsData.filter(item => {
+    const filteredData = currentRequests.filter(item => {
         const matchesSearch =
             item.tool.toLowerCase().includes(searchTerm.toLowerCase()) ||
             item.requester.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -46,15 +83,25 @@ export default function RequestsPage() {
             header: 'Request ID',
             accessor: 'id',
             className: 'text-blue-600 font-medium',
-            render: (row) => <Link href="#" className="hover:underline">{row.id}</Link>
+            render: (row) => (
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        handleRequestClick(row);
+                    }}
+                    className="text-blue-600 hover:text-blue-800 font-medium hover:underline focus:outline-none"
+                >
+                    {row.id}
+                </button>
+            )
         },
         {
             header: 'User',
             accessor: 'requester',
             render: (row) => (
                 <div className="flex items-center">
-                    <div className="h-8 w-8 rounded-full bg-gray-200 mr-3 overflow-hidden">
-                        <img src={row.avatar} alt={row.requester} className="h-full w-full object-cover" />
+                    <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center mr-3 text-blue-700 font-bold text-xs">
+                        {row.requester.split(' ').map(n => n[0]).join('')}
                     </div>
                     <span className="font-medium text-gray-900">{row.requester}</span>
                 </div>
@@ -87,10 +134,15 @@ export default function RequestsPage() {
         {
             header: 'Action',
             accessor: 'action',
-            className: 'text-right',
-            render: () => (
-                <button className="text-gray-400 hover:text-gray-600 p-1">
-                    <MoreVertical className="w-5 h-5" />
+            render: (row) => (
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        handleRequestClick(row);
+                    }}
+                    className="px-3 py-1 border border-gray-200 rounded text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+                >
+                    Review
                 </button>
             )
         }
@@ -109,10 +161,7 @@ export default function RequestsPage() {
                         <Download className="w-4 h-4 mr-2" />
                         Export CSV
                     </button>
-                    <button className="flex items-center px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg font-medium transition-colors shadow-sm">
-                        <Plus className="w-4 h-4 mr-2" />
-                        Create Request
-                    </button>
+
                 </div>
             </div>
 
@@ -156,7 +205,7 @@ export default function RequestsPage() {
                         <input
                             type="text"
                             placeholder="Search by ID, User, Tool..."
-                            className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                            className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm text-gray-900 placeholder:text-gray-500 font-medium"
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
@@ -164,9 +213,9 @@ export default function RequestsPage() {
 
                     <div className="flex items-center space-x-2 w-full md:w-auto overflow-x-auto">
                         <div className="flex items-center space-x-2">
-                            <span className="text-gray-500 text-sm whitespace-nowrap">Type:</span>
+                            <span className="text-gray-900 font-bold text-sm whitespace-nowrap">Type:</span>
                             <select
-                                className="border border-gray-200 rounded-md py-1.5 pl-3 pr-8 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                                className="border border-gray-200 rounded-md py-1.5 pl-3 pr-8 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white text-gray-900 font-semibold"
                                 value={filterType}
                                 onChange={(e) => setFilterType(e.target.value)}
                             >
@@ -177,9 +226,9 @@ export default function RequestsPage() {
                         </div>
 
                         <div className="flex items-center space-x-2">
-                            <span className="text-gray-500 text-sm whitespace-nowrap">Status:</span>
+                            <span className="text-gray-900 font-bold text-sm whitespace-nowrap">Status:</span>
                             <select
-                                className="border border-gray-200 rounded-md py-1.5 pl-3 pr-8 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                                className="border border-gray-200 rounded-md py-1.5 pl-3 pr-8 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white text-gray-900 font-semibold"
                                 value={filterStatus}
                                 onChange={(e) => setFilterStatus(e.target.value)}
                             >
@@ -192,9 +241,9 @@ export default function RequestsPage() {
                         </div>
 
                         <div className="flex items-center space-x-2">
-                            <span className="text-gray-500 text-sm whitespace-nowrap">Risk:</span>
+                            <span className="text-gray-900 font-bold text-sm whitespace-nowrap">Risk:</span>
                             <select
-                                className="border border-gray-200 rounded-md py-1.5 pl-3 pr-8 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                                className="border border-gray-200 rounded-md py-1.5 pl-3 pr-8 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white text-gray-900 font-semibold"
                                 value={filterRisk}
                                 onChange={(e) => setFilterRisk(e.target.value)}
                             >
@@ -242,6 +291,30 @@ export default function RequestsPage() {
                     </div>
                 </div>
             </div>
+            {/* Request Details Sidebar */}
+            <RequestDetailsSidebar
+                isOpen={!!selectedRequest}
+                onClose={closeSidebar}
+                request={selectedRequest}
+                onApprove={handleApprove}
+                onReject={handleReject}
+                showActions={false}
+            />
+
+            {/* Toast Notification */}
+            {toast.show && (
+                <div className={clsx(
+                    "fixed bottom-6 right-6 text-white px-6 py-3 rounded-lg shadow-xl flex items-center z-[100] animate-in fade-in slide-in-from-bottom-4 duration-300",
+                    toast.type === 'success' ? "bg-gray-900" : "bg-red-600"
+                )}>
+                    {toast.type === 'success' ? (
+                        <CheckCircle className="w-5 h-5 text-green-400 mr-3" />
+                    ) : (
+                        <XSquare className="w-5 h-5 text-white mr-3" />
+                    )}
+                    <span className="font-medium">{toast.message}</span>
+                </div>
+            )}
         </div>
     );
 }

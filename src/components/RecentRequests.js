@@ -2,13 +2,13 @@ import React from 'react';
 import Link from 'next/link';
 import clsx from 'clsx';
 import Table from './Table';
-import { requestsData } from '../data/mockData';
+import { dashboardRequestsData } from '../data/mockData';
 
 const statusStyles = {
-    'Pending Review': 'bg-orange-100 text-orange-700',
-    'Approved': 'bg-green-100 text-green-700',
-    'In Analysis': 'bg-blue-100 text-blue-700',
-    'Risk': 'bg-red-100 text-red-700',
+    'Pending': 'text-amber-600',
+    'Approved': 'text-green-600',
+    'In Analysis': 'text-blue-600',
+    'Risk': 'text-red-600',
 };
 
 export default function RecentRequests() {
@@ -30,15 +30,15 @@ export default function RecentRequests() {
             header: 'Status',
             accessor: 'status',
             render: (row) => (
-                <span className={clsx("inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium", statusStyles[row.status])}>
+                <span className={clsx("text-sm font-medium", statusStyles[row.status])}>
                     {row.status}
                 </span>
             )
         }
     ];
 
-    // Show only first 5 items for "Recent"
-    const recentData = requestsData.slice(0, 5);
+    // Use specific dashboard data
+    const recentData = dashboardRequestsData;
 
     return (
         <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">

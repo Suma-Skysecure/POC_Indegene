@@ -172,7 +172,7 @@ export default function ShadowItPage() {
 
                     <div className="flex space-x-3">
                         <select
-                            className="border border-gray-200 rounded-md py-1.5 pl-3 pr-8 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                            className="border border-gray-200 rounded-md py-1.5 pl-3 pr-8 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white text-gray-900 font-semibold"
                             value={riskFilter}
                             onChange={(e) => setRiskFilter(e.target.value)}
                         >
@@ -181,7 +181,7 @@ export default function ShadowItPage() {
                             <option>Medium</option>
                             <option>Low</option>
                         </select>
-                        <select className="border border-gray-200 rounded-md py-1.5 pl-3 pr-8 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white">
+                        <select className="border border-gray-200 rounded-md py-1.5 pl-3 pr-8 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white text-gray-900 font-semibold">
                             <option>Last 7 Days</option>
                             <option>Last 30 Days</option>
                         </select>

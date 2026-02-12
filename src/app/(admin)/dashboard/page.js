@@ -4,7 +4,7 @@ import React from 'react';
 import KPICard from '@/components/KPICard';
 import { SpendTrendChart, ToolUsageChart } from '@/components/DashboardCharts';
 import RecentRequests from '@/components/RecentRequests';
-import { DollarSign, RefreshCw, PieChart, Clock, Database, Calendar, Plus } from 'lucide-react';
+import { IndianRupee, RefreshCw, PieChart, Clock, Database, Calendar, Plus } from 'lucide-react';
 
 export default function DashboardPage() {
     return (
@@ -20,10 +20,6 @@ export default function DashboardPage() {
                         <Calendar className="mr-2 h-4 w-4 text-gray-500" />
                         Last 30 Days
                     </button>
-                    <button className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                        <Plus className="mr-2 h-4 w-4" />
-                        New Request
-                    </button>
                 </div>
             </div>
 
@@ -31,14 +27,14 @@ export default function DashboardPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
                 <KPICard
                     title="Total Software Spend"
-                    value="$12.4M"
+                    value="₹12.4M"
                     change="4% QoQ"
                     isPositive={true}
-                    icon={DollarSign}
+                    icon={IndianRupee}
                 />
                 <KPICard
                     title="Cost Avoided via Reuse"
-                    value="$1.2M"
+                    value="₹1.2M"
                     change="18%"
                     isPositive={true}
                     icon={RefreshCw}
@@ -48,15 +44,12 @@ export default function DashboardPage() {
                     value="68%"
                     subtext={<span>Known 68%, <span className="text-red-500">32% Unknown</span></span>}
                     icon={PieChart}
-                // The prompt says "Unknown in red", but the metric itself is 68%. 
-                // I'll stick to the cleaner look, maybe add a custom render for subtext if strictly needed,
-                // but the current KPICard handles subtext simply.
                 />
                 <KPICard
                     title="Avg Approval Time"
                     value="2.4 days"
                     change="30%"
-                    isPositive={true} // Prompt says "-30% (green)", meaning reduction is good.
+                    isPositive={true}
                     icon={Clock}
                 />
                 <KPICard
