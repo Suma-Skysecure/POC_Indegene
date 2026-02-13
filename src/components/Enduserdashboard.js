@@ -1,218 +1,227 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Search, Plus, List, Mic, HelpCircle, CheckCircle, Cloud, X } from 'lucide-react';
-import { toolsData as internalTools, EQUIVALENTS } from '@/data/toolsData';
+import {
+    Activity,
+    CheckCircle2,
+    CircleX,
+    Clock3,
+    Search,
+    Plus,
+    Mic,
+    Mail,
+    Folder,
+    Share2,
+    Building2,
+    Users,
+    Gamepad2,
+    Cpu,
+} from 'lucide-react';
 
-const StatCard = ({ title, value, status, icon }) => (
-    <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 flex items-center justify-between">
-        <div>
-            <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wide">{title}</h3>
-            <div className={`text-3xl font-bold mt-2 ${status === 'pending' ? 'text-blue-600' : status === 'approved' ? 'text-green-600' : 'text-red-500'}`}>
-                {value}
+function StatCard({ label, value, tone, icon: Icon }) {
+    const tones = {
+        pending: { value: 'text-blue-700', iconWrap: 'bg-blue-50', icon: 'text-blue-600' },
+        approved: { value: 'text-green-600', iconWrap: 'bg-green-50', icon: 'text-green-600' },
+        rejected: { value: 'text-red-600', iconWrap: 'bg-red-50', icon: 'text-red-500' },
+    };
+    const style = tones[tone] || tones.pending;
+
+    return (
+        <div className="bg-white rounded-lg border border-gray-100 p-4 flex items-center justify-between shadow-sm">
+            <div>
+                <p className="text-[11px] text-gray-400 uppercase tracking-wider font-semibold">{label}</p>
+                <p className={`mt-1 text-3xl font-bold ${style.value}`}>{value}</p>
+            </div>
+            <div className={`h-8 w-8 rounded-full flex items-center justify-center ${style.iconWrap}`}>
+                <Icon className={`h-4 w-4 ${style.icon}`} />
             </div>
         </div>
-        <div className={`p-3 rounded-full ${status === 'pending' ? 'bg-blue-50 text-blue-600' : status === 'approved' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500'}`}>
-            {icon}
+    );
+}
+
+function StatusPill({ status }) {
+    return (
+        <span
+            className={`inline-flex px-2.5 py-1 rounded-full text-[10px] uppercase tracking-wide font-bold ${
+                status === 'ACTIVE' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+            }`}
+        >
+            {status}
+        </span>
+    );
+}
+
+function RecommendedToolCard({ item }) {
+    const used = item.users - item.available;
+    const percent = Math.round((used / item.users) * 100);
+    const remainingPercent = 100 - percent;
+    const isCritical = item.available < item.users * 0.1;
+    const isWarning = item.available < item.users * 0.3;
+
+    return (
+        <div className="bg-white rounded-lg border border-gray-100 p-4 shadow-sm">
+            <div className="flex items-start gap-3">
+                <div className="h-9 w-9 rounded-md bg-gray-50 border border-gray-200 flex items-center justify-center">
+                    <item.icon className="h-5 w-5 text-gray-700" />
+                </div>
+                <div>
+                    <h4 className="text-sm font-semibold text-gray-900">{item.name}</h4>
+                    <p className="text-[11px] text-gray-400">ID: {item.id}</p>
+                    <p className="text-[11px] text-gray-500">{item.category}</p>
+                </div>
+            </div>
+
+            <div className="mt-4 space-y-1.5 text-xs">
+                <div className="flex justify-between text-gray-500">
+                    <span>Users</span>
+                    <span className="font-semibold text-gray-700">{item.users.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between text-gray-500">
+                    <span>License Availability</span>
+                    <span className="font-semibold text-gray-700">{item.available.toLocaleString()} / {item.users.toLocaleString()}</span>
+                </div>
+                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div
+                        className={`h-full ${isCritical ? 'bg-red-500' : isWarning ? 'bg-amber-500' : 'bg-green-500'}`}
+                        style={{ width: `${percent}%` }}
+                    />
+                </div>
+                <div className="flex justify-between items-center">
+                    {isCritical ? (
+                        <p className="text-[11px] font-medium text-red-500">Almost full. Only a few licenses left.</p>
+                    ) : (
+                        <span />
+                    )}
+                    <p className="text-[11px] text-gray-400 font-semibold">-{remainingPercent}%</p>
+                </div>
+            </div>
+            <button className="mt-3 w-full border border-blue-500 rounded-md py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50 transition-colors">
+                Request License
+            </button>
         </div>
-    </div>
-);
+    );
+}
 
-// internalTools and EQUIVALENTS are now imported from @/data/toolsData
+const assignedLicenses = [
+    { tool: 'Outlook (Office 365)', appId: '65539', category: 'Web Mail', assigned: 1, available: '5,599', status: 'ACTIVE', icon: Mail },
+    { tool: 'OneDrive', appId: '1310789', category: 'File Sharing', assigned: 1, available: '5,594', status: 'ACTIVE', icon: Folder },
+    { tool: 'SharePoint Online', appId: '655377', category: 'Collaboration', assigned: 1, available: '5,533', status: 'ACTIVE', icon: Share2 },
+    { tool: 'Citrix', appId: '1245859', category: 'IT Services', assigned: 1, available: '993', status: 'ACTIVE', icon: Building2 },
+    { tool: 'SAP SuccessFactors', appId: '2097159', category: 'Human Resources', assigned: 1, available: '4,763', status: 'ACTIVE', icon: Users },
+];
 
+const recommendedTools = [
+    { name: 'PlayStation Network', id: '983261', category: 'Consumer / Gaming', users: 4820, available: 2410, icon: Gamepad2 },
+    { name: 'Steam', id: '983262', category: 'Consumer / Gaming Platform', users: 6140, available: 60, icon: Activity },
+    { name: 'NVIDIA GeForce NOW', id: '983263', category: 'Consumer / Cloud Gaming', users: 3950, available: 3670, icon: Cpu },
+];
 
 export default function Enduserdashboard() {
     const [searchTerm, setSearchTerm] = useState('');
-    const [dismissedAlert, setDismissedAlert] = useState(false);
 
-    const filteredTools = internalTools.filter(tool =>
-        tool.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        tool.category.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-
-    const equivalentMatch = EQUIVALENTS[searchTerm.toLowerCase().trim()];
-    const showSuggestions = searchTerm.length > 0 && filteredTools.length === 0 && !!equivalentMatch;
-    const isNoResultFound = searchTerm.length > 0 && filteredTools.length === 0 && !equivalentMatch;
-
-    const displayTools = showSuggestions
-        ? internalTools.filter(t => t.name === equivalentMatch.name)
-        : (searchTerm.length > 0 ? filteredTools : internalTools);
+    const visibleLicenses = useMemo(() => {
+        const value = searchTerm.toLowerCase().trim();
+        if (!value) return assignedLicenses;
+        return assignedLicenses.filter((item) =>
+            item.tool.toLowerCase().includes(value) ||
+            item.appId.toLowerCase().includes(value) ||
+            item.category.toLowerCase().includes(value)
+        );
+    }, [searchTerm]);
 
     return (
-        <div className="space-y-8 max-w-7xl mx-auto pb-12">
-            {/* Header Text */}
-            <div className="flex justify-between items-center">
+        <div className="max-w-7xl mx-auto pb-10 space-y-5">
+            <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900">Dashboard Overview</h1>
-                    <p className="text-gray-500 mt-1 text-sm font-medium">Real-time governance and tool utilization metrics</p>
+                    <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                        <span className="h-7 w-7 rounded-md bg-blue-50 text-blue-700 flex items-center justify-center">
+                            <Activity className="h-4 w-4" />
+                        </span>
+                        Dashboard Overview
+                    </h1>
+                    <p className="text-sm text-gray-500 mt-1">Real-time governance and tool utilization metrics</p>
                 </div>
-                <Link href="/user/request-new" className="bg-[#002D72] hover:bg-[#001D4A] text-white px-5 py-2.5 rounded-lg font-bold text-sm flex items-center shadow-md transition-all active:scale-95">
-                    <Plus className="w-4 h-4 mr-2" />
+                <Link
+                    href="/user/request-new"
+                    className="bg-[#0A4DAA] hover:bg-[#0B3F88] text-white px-4 py-2 rounded-md text-sm font-semibold flex items-center gap-1.5"
+                >
+                    <Plus className="h-4 w-4" />
                     New Request
                 </Link>
             </div>
 
-            {/* Big Search Bar */}
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+            <section className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
                 <div className="relative">
-                    <Search className="absolute left-4 top-3.5 h-5 w-5 text-gray-400" />
+                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                     <input
                         type="text"
-                        placeholder="Search for a tool (e.g., Figma, Canva, Tableau)"
-                        className="w-full pl-12 pr-12 py-3.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-gray-900 placeholder-gray-400 font-medium bg-gray-50/50"
                         value={searchTerm}
-                        onChange={(e) => {
-                            setSearchTerm(e.target.value);
-                            setDismissedAlert(false);
-                        }}
+                        onChange={(event) => setSearchTerm(event.target.value)}
+                        placeholder="Search for a tool (e.g., Figma, Canva, Tableau)"
+                        className="w-full border border-gray-300 bg-white text-gray-900 placeholder:text-gray-400 rounded-lg pl-10 pr-11 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100"
                     />
-                    <Mic className="absolute right-4 top-3.5 h-5 w-5 text-gray-400 cursor-pointer" />
+                    <button className="absolute right-2 top-1/2 -translate-y-1/2 h-7 w-7 rounded-md border border-gray-200 text-gray-500 flex items-center justify-center">
+                        <Mic className="h-3.5 w-3.5" />
+                    </button>
                 </div>
+                <p className="text-center text-xs text-gray-500 mt-3">Find tools, check license availability, or request new software.</p>
+            </section>
 
-                {showSuggestions && (
-                    <div className="mt-6 bg-white border border-gray-100 rounded-2xl p-6 flex items-center justify-between shadow-sm animate-in fade-in slide-in-from-top-4 duration-500 relative group">
-                        <button
-                            className="absolute right-4 top-4 text-gray-400 hover:text-gray-600 transition-opacity"
-                            onClick={() => setSearchTerm('')}
-                        >
-                            <X className="w-5 h-5" />
-                        </button>
-                        <div className="flex items-start gap-4 flex-1">
-                            <div className="p-3 bg-blue-50 rounded-full text-blue-600">
-                                <Cloud className="w-6 h-6" />
-                            </div>
-                            <div className="pt-0.5">
-                                <div className="flex items-center gap-2">
-                                    <h3 className="text-gray-900 font-bold text-lg leading-tight">We don't have {searchTerm}</h3>
-                                    <span className="text-gray-400 font-semibold">•</span>
-                                    <span className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Alternative found</span>
-                                </div>
-                                <p className="text-gray-500 mt-1 text-sm font-medium leading-relaxed max-w-2xl">
-                                    <span className="text-[#002D72] font-bold">{equivalentMatch.name}</span> is an approved equivalent tool available in our catalogue.
-                                    Using approved tools speeds up the access process and ensures compliance.
-                                </p>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-4">
-                            <button className="bg-[#002D72] hover:bg-[#001D4A] text-white px-8 py-3 rounded-xl font-bold text-sm shadow-md transition-all active:scale-95">
-                                Request Equivalent
-                            </button>
-                            <button className="text-gray-600 hover:bg-gray-50 border border-gray-200 px-6 py-3 rounded-xl font-bold text-sm transition-all active:scale-95">
-                                New Tool Request
-                            </button>
-                        </div>
-                    </div>
-                )}
-
-                {isNoResultFound && !dismissedAlert && (
-                    <div className="mt-6 bg-white border border-gray-100 rounded-2xl p-6 flex items-center justify-between shadow-sm animate-in fade-in slide-in-from-top-4 duration-500 relative group">
-                        <button
-                            className="absolute right-4 top-4 text-gray-400 hover:text-gray-600 transition-opacity"
-                            onClick={() => setDismissedAlert(true)}
-                        >
-                            <X className="w-5 h-5" />
-                        </button>
-                        <div className="flex items-start gap-4 flex-1">
-                            <div className="p-3 bg-blue-50 rounded-full text-blue-600">
-                                <Cloud className="w-6 h-6" />
-                            </div>
-                            <div className="pt-0.5">
-                                <div className="flex items-center gap-2">
-                                    <h3 className="text-gray-900 font-bold text-lg leading-tight">We don't have {searchTerm}</h3>
-                                    <span className="text-gray-400 font-semibold">•</span>
-                                    <span className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">No Alternative found</span>
-                                </div>
-                                <p className="text-gray-500 mt-1 text-sm font-medium leading-relaxed max-w-2xl">
-                                    We could not find any approved or reusable tool matching your request in the current catalogue.
-                                    To proceed, please raise a New Tool Request.
-                                </p>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-4">
-                            <Link href="/user/request-new" className="bg-white border border-gray-200 text-gray-900 px-8 py-3 rounded-xl font-bold text-sm shadow-sm hover:bg-gray-50 transition-all active:scale-95">
-                                New Tool Request
-                            </Link>
-                        </div>
-                    </div>
-                )}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <StatCard label="Pending Requests" value="2" tone="pending" icon={Clock3} />
+                <StatCard label="Approved" value="5" tone="approved" icon={CheckCircle2} />
+                <StatCard label="Rejected" value="1" tone="rejected" icon={CircleX} />
             </div>
 
-            {/* Default Dashboard Content */}
-            {!showSuggestions && (
-                <>
-                    {/* Stats Row */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <StatCard title="Pending Requests" value="2" status="pending" icon={<div className="font-bold text-lg">?</div>} />
-                        <StatCard title="Approved" value="5" status="approved" icon={<div className="font-bold text-lg">✓</div>} />
-                        <StatCard title="Rejected" value="1" status="rejected" icon={<div className="font-bold text-lg">✕</div>} />
-                    </div>
-
-                    {/* Table */}
-                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                        <div className="p-6 border-b border-gray-100 flex justify-between items-center">
-                            <h2 className="text-lg font-extrabold text-[#002D72]">My Assigned Licenses</h2>
-                            <button className="text-sm text-blue-600 font-bold hover:underline">View All</button>
-                        </div>
-                        <table className="w-full">
-                            <thead className="bg-gray-50 text-[10px] text-gray-400 uppercase font-extrabold tracking-widest">
-                                <tr>
-                                    <th className="px-8 py-4 text-left">Tool</th>
-                                    <th className="px-8 py-4 text-left">Assigned Date</th>
-                                    <th className="px-8 py-4 text-right">Status</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                                <tr className="hover:bg-gray-50/50 transition-colors">
-                                    <td className="px-8 py-5 flex items-center">
-                                        <div className="h-10 w-10 bg-gray-50 rounded-lg p-2 mr-4 border border-gray-100">
-                                            <img src="https://cdn.worldvectorlogo.com/logos/playstation-logomark.svg" alt="PSN" className="h-full w-full object-contain" />
+            <section className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm">
+                <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                    <h2 className="text-xl font-semibold text-gray-900">My Assigned Licenses</h2>
+                    <button className="text-sm text-blue-700 font-semibold hover:text-blue-800">View All</button>
+                </div>
+                <div className="overflow-x-auto">
+                    <table className="w-full min-w-[980px] text-left">
+                        <thead>
+                            <tr className="bg-gray-50 text-[10px] uppercase tracking-widest text-gray-400 font-bold">
+                                <th className="px-4 py-3">Tool Name</th>
+                                <th className="px-4 py-3">Application ID</th>
+                                <th className="px-4 py-3">Category</th>
+                                <th className="px-4 py-3">Assigned Licenses</th>
+                                <th className="px-4 py-3">Available Licenses</th>
+                                <th className="px-4 py-3">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                            {visibleLicenses.map((row) => (
+                                <tr key={row.appId} className="hover:bg-gray-50/50">
+                                    <td className="px-4 py-3.5">
+                                        <div className="flex items-center gap-2.5">
+                                            <span className="h-7 w-7 rounded-md bg-gray-50 border border-gray-200 flex items-center justify-center">
+                                                <row.icon className="h-4 w-4 text-blue-600" />
+                                            </span>
+                                            <span className="text-sm font-semibold text-gray-900">{row.tool}</span>
                                         </div>
-                                        <span className="font-bold text-gray-900">PlayStation Network</span>
                                     </td>
-                                    <td className="px-8 py-5 text-gray-500 font-medium text-sm">Oct 10, 2023</td>
-                                    <td className="px-8 py-5 text-right">
-                                        <span className="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-extrabold bg-[#E8F5E9] text-[#2E7D32] uppercase tracking-wider">Active</span>
-                                    </td>
+                                    <td className="px-4 py-3.5 text-sm text-gray-600">{row.appId}</td>
+                                    <td className="px-4 py-3.5 text-sm text-gray-600">{row.category}</td>
+                                    <td className="px-4 py-3.5 text-sm font-semibold text-gray-700">{row.assigned}</td>
+                                    <td className="px-4 py-3.5 text-sm text-gray-700">{row.available}</td>
+                                    <td className="px-4 py-3.5"><StatusPill status={row.status} /></td>
                                 </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </>
-            )}
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
 
-            {/* Tools Area */}
-            <div>
-                <h2 className="text-lg font-extrabold text-[#002D72] mb-6">
-                    {showSuggestions ? `Equivalent Tools (${displayTools.length})` : searchTerm ? `Tools Found (${filteredTools.length})` : 'Recommended Tools'}
-                </h2>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                    {displayTools.map((tool, idx) => (
-                        <div key={idx} className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between group hover:shadow-xl transition-all duration-300">
-                            <div className="flex items-center space-x-4 mb-6">
-                                <div className="h-14 w-14 bg-gray-50 rounded-xl p-3 flex items-center justify-center border border-gray-100 group-hover:border-blue-100 transition-colors">
-                                    <img src={tool.icon} alt={tool.name} className="h-full w-full object-contain" />
-                                </div>
-                                <div>
-                                    <h3 className="font-extrabold text-[#002D72] text-lg">{tool.name}</h3>
-                                    <p className="text-xs text-gray-400 font-medium">{tool.vendor}</p>
-                                </div>
-                            </div>
-                            <div className="flex justify-between items-center mb-6">
-                                <span className="text-[10px] font-extrabold px-3 py-1 rounded-full uppercase tracking-wider bg-[#E8F5E9] text-[#2E7D32]">
-                                    {tool.status}
-                                </span>
-                                <span className="text-xs font-bold text-green-600 bg-green-50 px-3 py-1 rounded-full">
-                                    {tool.available} Available
-                                </span>
-                            </div>
-                            <button className="w-full py-3.5 font-extrabold text-sm rounded-xl border-2 border-[#002D72] text-[#002D72] hover:bg-[#F5F8FF] transition-all">
-                                Request License
-                            </button>
-                        </div>
+            <section>
+                <h3 className="text-xl font-semibold text-gray-900 mb-3">Recommended Tools</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {recommendedTools.map((item) => (
+                        <RecommendedToolCard key={item.id} item={item} />
                     ))}
                 </div>
-            </div>
+            </section>
         </div>
     );
 }
