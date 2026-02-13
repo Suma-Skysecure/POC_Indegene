@@ -165,7 +165,6 @@ export default function Enduserdashboard() {
                         <Mic className="h-3.5 w-3.5" />
                     </button>
                 </div>
-                <p className="text-center text-xs text-gray-500 mt-3">Find tools, check license availability, or request new software.</p>
             </section>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

@@ -32,6 +32,18 @@ export default function SearchTools() {
         ? toolsData.filter(t => t.name === equivalentMatch.name)
         : filteredTools;
 
+    const buildLicenseRequestLink = (tool) => {
+        const params = new URLSearchParams({
+            requestType: 'new_license',
+            toolId: tool.id,
+            toolName: tool.name,
+            category: tool.category,
+            price: String(tool.price ?? 0),
+            users: String(tool.users ?? 1),
+        });
+        return `/user/request-new?${params.toString()}`;
+    };
+
     return (
         <div className="space-y-10 max-w-7xl mx-auto pb-12">
             {/* Header */}
@@ -114,7 +126,7 @@ export default function SearchTools() {
                         </div>
                         <div className="pt-0.5">
                             <div className="flex items-center gap-2">
-                                <h3 className="text-gray-900 font-bold text-lg leading-tight">We don't have {searchTerm}</h3>
+                                <h3 className="text-gray-900 font-bold text-lg leading-tight">We don&apos;t have {searchTerm}</h3>
                                 <span className="text-gray-400 font-semibold">•</span>
                                 <span className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Alternative found</span>
                             </div>
@@ -150,7 +162,7 @@ export default function SearchTools() {
                         </div>
                         <div className="pt-0.5">
                             <div className="flex items-center gap-2">
-                                <h3 className="text-gray-900 font-bold text-lg leading-tight">We don't have {searchTerm}</h3>
+                                <h3 className="text-gray-900 font-bold text-lg leading-tight">We don&apos;t have {searchTerm}</h3>
                                 <span className="text-gray-400 font-semibold">•</span>
                                 <span className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">No Alternative found</span>
                             </div>
@@ -249,9 +261,12 @@ export default function SearchTools() {
                             </div>
 
                             <div className="mt-8">
-                                <button className="w-full py-4 text-[#002D72] font-black text-sm border-2 border-[#002D72]/10 rounded-2xl hover:bg-[#002D72] hover:text-white hover:border-[#002D72] hover:shadow-lg transition-all active:scale-[0.98]">
+                                <Link
+                                    href={buildLicenseRequestLink(tool)}
+                                    className="block text-center w-full py-4 text-[#002D72] font-black text-sm border-2 border-[#002D72]/10 rounded-2xl hover:bg-[#002D72] hover:text-white hover:border-[#002D72] hover:shadow-lg transition-all active:scale-[0.98]"
+                                >
                                     Request License
-                                </button>
+                                </Link>
                             </div>
                         </div>
                     ))}
