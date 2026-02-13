@@ -154,10 +154,17 @@ export default function LoginPage() {
     setLoading(true);
 
     // Hardcoded credentials check
-    if (username === 'Admin@indegene.com' && password === 'Admin@123') {
+    if (
+      (username.trim() === 'Admin@indegene.com' && password.trim() === 'Admin@123') ||
+      (username.trim() === 'Enduser@indegene.com' && password.trim() === 'Enduser@123')
+    ) {
       // Simulate API delay for better UX
       setTimeout(() => {
-        router.push('/dashboard');
+        if (username.trim() === 'Enduser@indegene.com') {
+          router.push('/user/dashboard');
+        } else {
+          router.push('/dashboard');
+        }
       }, 800);
     } else {
       setTimeout(() => {

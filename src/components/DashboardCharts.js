@@ -79,9 +79,9 @@ export function ToolUsageChart() {
                         contentStyle={{ backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #E5E7EB', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
                     />
                     <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px' }} />
-                    <Bar dataKey="Sales" stackId="a" fill="#1D4ED8" /> {/* Darker Blue */}
-                    <Bar dataKey="External" stackId="a" fill="#DB2777" /> {/* Pink */}
-                    <Bar dataKey="Internal" stackId="a" fill="#2DD4BF" /> {/* Teal */}
+                    <Bar dataKey="Sales" stackId="a" fill="#17479E" /> {/* Indegene Blue */}
+                    <Bar dataKey="External" stackId="a" fill="#E31B6D" /> {/* Indegene Pink */}
+                    <Bar dataKey="Internal" stackId="a" fill="#00A9E0" /> {/* Indegene Cyan */}
                 </BarChart>
             </ResponsiveContainer>
         </div>
