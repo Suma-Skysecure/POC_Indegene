@@ -118,10 +118,7 @@ export default function ShadowItPage() {
                         <Download className="w-4 h-4 mr-2" />
                         Export Report
                     </button>
-                    <button className="flex items-center px-4 py-2 bg-blue-900 hover:bg-blue-800 text-white rounded-lg font-medium transition-colors shadow-sm">
-                        <Shield className="w-4 h-4 mr-2" />
-                        Bulk Action
-                    </button>
+
                 </div>
             </div>
 

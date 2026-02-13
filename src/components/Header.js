@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Search, Bell } from 'lucide-react';
-import Image from 'next/image';
+
 
 export default function Header() {
     return (
@@ -32,16 +32,12 @@ export default function Header() {
 
                 {/* User Profile */}
                 <div className="flex items-center">
-                    {/* Avatar - using a placeholder or creating a simple initial avatar if no image */}
+                    {/* Avatar - simple initial avatar */}
                     <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold mr-3 border border-blue-200">
-                        <img
-                            src="https://i.pravatar.cc/150?u=alex"
-                            alt="Alex Rivera"
-                            className="h-8 w-8 rounded-full object-cover"
-                        />
+                        A
                     </div>
                     <div className="hidden md:block">
-                        <p className="text-sm font-medium text-gray-700">Alex Rivera</p>
+                        <p className="text-sm font-medium text-gray-700">Admin</p>
                         <p className="text-xs text-gray-500">Super Admin</p>
                     </div>
                 </div>

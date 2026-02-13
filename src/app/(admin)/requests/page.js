@@ -24,14 +24,17 @@ const StatCard = ({ title, value, icon: Icon, colorClass, bgClass }) => (
 export default function RequestsPage() {
     const [currentRequests, setCurrentRequests] = useState(requestsData);
     const [searchTerm, setSearchTerm] = useState('');
+    const [activeTab, setActiveTab] = useState('All Requests');
     const [filterType, setFilterType] = useState('All Types');
     const [filterStatus, setFilterStatus] = useState('All Status');
     const [filterRisk, setFilterRisk] = useState('All Risks');
     const [selectedRequest, setSelectedRequest] = useState(null);
+    const [selectedIds, setSelectedIds] = useState([]);
     const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
     const showNotification = (message, type = 'success') => {
         setToast({ show: true, message, type });
+        setSelectedIds([]); // Clear selection on action
         setTimeout(() => setToast({ show: false, message: '', type: 'success' }), 3000);
     };
 
@@ -55,6 +58,34 @@ export default function RequestsPage() {
         showNotification('Request rejected successfully!', 'error');
     };
 
+    const handleBulkApprove = () => {
+        setCurrentRequests(prev => prev.map(item =>
+            selectedIds.includes(item.id) ? { ...item, status: 'Approved' } : item
+        ));
+        showNotification(`${selectedIds.length} requests approved successfully!`);
+    };
+
+    const handleBulkReject = () => {
+        setCurrentRequests(prev => prev.map(item =>
+            selectedIds.includes(item.id) ? { ...item, status: 'Rejected' } : item
+        ));
+        showNotification(`${selectedIds.length} requests rejected successfully!`, 'error');
+    };
+
+    const toggleSelectAll = () => {
+        if (selectedIds.length === filteredData.length) {
+            setSelectedIds([]);
+        } else {
+            setSelectedIds(filteredData.map(r => r.id));
+        }
+    };
+
+    const toggleSelect = (id) => {
+        setSelectedIds(prev =>
+            prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+        );
+    };
+
     const handleRequestClick = (request) => {
         setSelectedRequest(request);
     };
@@ -64,7 +95,14 @@ export default function RequestsPage() {
     };
 
     // Filter Logic
-    const filteredData = currentRequests.filter(item => {
+    const filteredByTab = currentRequests.filter(item => {
+        if (activeTab === 'All Pending (42)') return item.status === 'Pending';
+        if (activeTab === 'Approved Requests') return item.status === 'Approved';
+        if (activeTab === 'Reuse Requests') return item.type === 'Reuse';
+        return true;
+    });
+
+    const filteredData = filteredByTab.filter(item => {
         const matchesSearch =
             item.tool.toLowerCase().includes(searchTerm.toLowerCase()) ||
             item.requester.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -79,6 +117,22 @@ export default function RequestsPage() {
 
     // Columns Configuration
     const columns = [
+        {
+            header: <input type="checkbox" checked={selectedIds.length === filteredData.length && filteredData.length > 0} onChange={toggleSelectAll} className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />,
+            accessor: 'selection',
+            className: 'w-10',
+            render: (row) => (
+                <input
+                    type="checkbox"
+                    checked={selectedIds.includes(row.id)}
+                    onChange={(e) => {
+                        e.stopPropagation();
+                        toggleSelect(row.id);
+                    }}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+            )
+        },
         {
             header: 'Request ID',
             accessor: 'id',
@@ -161,61 +215,100 @@ export default function RequestsPage() {
                         <Download className="w-4 h-4 mr-2" />
                         Export CSV
                     </button>
-
                 </div>
             </div>
 
             {/* KPIs */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <StatCard
-                    title="Avg. Response Time"
-                    value="4.2 Days"
-                    icon={Clock}
-                    bgClass="bg-blue-50"
-                    colorClass="text-blue-600"
-                />
-                <StatCard
-                    title="Approval Rate"
-                    value="86%"
-                    icon={CheckCircle}
-                    bgClass="bg-green-50"
-                    colorClass="text-green-600"
-                />
-                <StatCard
-                    title="Pending Review"
-                    value="42"
-                    icon={Hourglass}
-                    bgClass="bg-amber-50"
-                    colorClass="text-amber-600"
-                />
-                <StatCard
-                    title="High Risk Items"
-                    value="8"
-                    icon={AlertTriangle}
-                    bgClass="bg-red-50"
-                    colorClass="text-red-500"
-                />
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
+                    <div className="flex justify-between items-start mb-4">
+                        <span className="text-sm font-bold text-gray-900">Approval Velocity</span>
+                        <span className="text-[10px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded">+12% vs last week</span>
+                    </div>
+                    <div className="flex items-baseline space-x-2">
+                        <span className="text-3xl font-bold text-gray-900">1.8 Days</span>
+                        <span className="text-xs text-gray-500 font-medium whitespace-nowrap">avg. turnaround</span>
+                    </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm relative overflow-hidden">
+                    <div className="flex justify-between items-start mb-4 relative z-10">
+                        <span className="text-sm font-bold text-gray-900">Pending Value</span>
+                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Active Pipeline</span>
+                    </div>
+                    <div className="flex items-baseline space-x-2 relative z-10">
+                        <span className="text-3xl font-bold text-gray-900">$142,500</span>
+                        <span className="text-xs text-gray-500 font-medium whitespace-nowrap">est. annual spend</span>
+                    </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm relative overflow-hidden">
+                    <div className="flex justify-between items-start mb-4 relative z-10">
+                        <span className="text-sm font-bold text-gray-900">Policy Compliance</span>
+                        <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Auto-Vetted</span>
+                    </div>
+                    <div className="flex items-baseline space-x-2 relative z-10">
+                        <span className="text-3xl font-bold text-gray-900">94%</span>
+                        <span className="text-xs text-gray-500 font-medium whitespace-nowrap">pre-screened requests</span>
+                    </div>
+                </div>
+            </div>
+
+            {/* Tabs & Sort */}
+            <div className="flex items-center justify-between border-b border-gray-200 bg-transparent pb-0">
+                <div className="flex space-x-8">
+                    {['All Requests', 'All Pending (42)', 'Approved Requests', 'Reuse Requests'].map(tab => (
+                        <button
+                            key={tab}
+                            onClick={() => setActiveTab(tab)}
+                            className={clsx(
+                                "pb-4 text-sm font-medium transition-colors relative",
+                                activeTab === tab
+                                    ? "text-blue-600 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-blue-600"
+                                    : "text-gray-500 hover:text-gray-700"
+                            )}
+                        >
+                            {tab}
+                        </button>
+                    ))}
+                </div>
+                <div className="flex items-center space-x-2 mb-4">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Sort by:</span>
+                    <div className="relative">
+                        <select className="appearance-none bg-white border border-gray-200 rounded-lg px-4 py-2 pr-10 text-xs font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 w-48">
+                            <option>Date (Newest First)</option>
+                            <option>Risk (High to Low)</option>
+                        </select>
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                            <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                            </svg>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             {/* Filters Bar */}
-            <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="flex flex-col md:flex-row gap-4 items-center flex-1">
-                    <div className="relative w-full md:w-80">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-6 flex-1">
+                    <div className="relative w-80">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
                         <input
                             type="text"
                             placeholder="Search by ID, User, Tool..."
-                            className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm text-gray-900 placeholder:text-gray-500 font-medium"
+                            className="w-full pl-10 pr-4 py-2 bg-gray-50/50 border border-transparent rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500/20 text-sm text-gray-900 placeholder:text-gray-400 font-medium"
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
                     </div>
 
-                    <div className="flex items-center space-x-2 w-full md:w-auto overflow-x-auto">
+                    <div className="h-6 w-px bg-gray-200" />
+
+                    <div className="flex items-center space-x-4">
                         <div className="flex items-center space-x-2">
-                            <span className="text-gray-900 font-bold text-sm whitespace-nowrap">Type:</span>
+                            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">Type:</span>
                             <select
-                                className="border border-gray-200 rounded-md py-1.5 pl-3 pr-8 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white text-gray-900 font-semibold"
+                                className="bg-transparent text-sm font-bold text-gray-700 focus:outline-none cursor-pointer"
                                 value={filterType}
                                 onChange={(e) => setFilterType(e.target.value)}
                             >
@@ -226,9 +319,9 @@ export default function RequestsPage() {
                         </div>
 
                         <div className="flex items-center space-x-2">
-                            <span className="text-gray-900 font-bold text-sm whitespace-nowrap">Status:</span>
+                            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">Status:</span>
                             <select
-                                className="border border-gray-200 rounded-md py-1.5 pl-3 pr-8 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white text-gray-900 font-semibold"
+                                className="bg-transparent text-sm font-bold text-gray-700 focus:outline-none cursor-pointer"
                                 value={filterStatus}
                                 onChange={(e) => setFilterStatus(e.target.value)}
                             >
@@ -241,9 +334,9 @@ export default function RequestsPage() {
                         </div>
 
                         <div className="flex items-center space-x-2">
-                            <span className="text-gray-900 font-bold text-sm whitespace-nowrap">Risk:</span>
+                            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">Risk:</span>
                             <select
-                                className="border border-gray-200 rounded-md py-1.5 pl-3 pr-8 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white text-gray-900 font-semibold"
+                                className="bg-transparent text-sm font-bold text-gray-700 focus:outline-none cursor-pointer"
                                 value={filterRisk}
                                 onChange={(e) => setFilterRisk(e.target.value)}
                             >
@@ -256,38 +349,71 @@ export default function RequestsPage() {
                     </div>
                 </div>
 
-                <div className="flex justify-end">
+                <button
+                    onClick={() => {
+                        setSearchTerm('');
+                        setFilterType('All Types');
+                        setFilterStatus('All Status');
+                        setFilterRisk('All Risks');
+                    }}
+                    className="text-blue-600 text-xs font-bold hover:text-blue-800 tracking-wider uppercase whitespace-nowrap"
+                >
+                    Clear Filters
+                </button>
+            </div>
+
+            {/* Selection Bar */}
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
+                <span className="text-sm font-medium text-gray-500">
+                    {selectedIds.length} items selected
+                </span>
+                <div className="flex space-x-3">
                     <button
-                        onClick={() => {
-                            setSearchTerm('');
-                            setFilterType('All Types');
-                            setFilterStatus('All Status');
-                            setFilterRisk('All Risks');
-                        }}
-                        className="text-blue-600 text-sm font-medium hover:text-blue-800 whitespace-nowrap"
+                        onClick={handleBulkApprove}
+                        disabled={selectedIds.length === 0}
+                        className={clsx(
+                            "inline-flex items-center px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-sm",
+                            selectedIds.length === 0
+                                ? "bg-blue-100 text-white cursor-not-allowed opacity-80"
+                                : "bg-blue-600 text-white hover:bg-blue-700"
+                        )}
                     >
-                        Clear Filters
+                        <CheckCircle className="w-4 h-4 mr-2" />
+                        Approve Selected
+                    </button>
+                    <button
+                        onClick={handleBulkReject}
+                        disabled={selectedIds.length === 0}
+                        className={clsx(
+                            "inline-flex items-center px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-sm",
+                            selectedIds.length === 0
+                                ? "bg-red-100 text-white cursor-not-allowed opacity-80"
+                                : "bg-red-600 text-white hover:bg-red-700"
+                        )}
+                    >
+                        <XSquare className="w-4 h-4 mr-2" />
+                        Reject Selected
                     </button>
                 </div>
             </div>
 
             {/* Table */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                 <Table columns={columns} data={filteredData} />
 
                 {/* Pagination */}
-                <div className="bg-white px-6 py-4 flex items-center justify-between border-t border-gray-200">
-                    <span className="text-sm text-gray-500">
-                        Showing 1 to {filteredData.length > 7 ? 7 : filteredData.length} of 248 requests
+                <div className="bg-white px-6 py-4 flex items-center justify-between border-t border-gray-50">
+                    <span className="text-sm font-medium text-gray-400">
+                        Showing 1 to {filteredData.length > 7 ? 7 : filteredData.length} of {filteredData.length} total requests
                     </span>
                     <div className="flex items-center space-x-1">
-                        <button className="px-3 py-1 border border-gray-200 rounded text-gray-400 hover:bg-gray-50">&lt;</button>
-                        <button className="px-3 py-1 border border-blue-600 bg-blue-600 text-white rounded">1</button>
-                        <button className="px-3 py-1 border border-gray-200 rounded text-gray-600 hover:bg-gray-50">2</button>
-                        <button className="px-3 py-1 border border-gray-200 rounded text-gray-600 hover:bg-gray-50">3</button>
-                        <span className="px-2 text-gray-400">...</span>
-                        <button className="px-3 py-1 border border-gray-200 rounded text-gray-600 hover:bg-gray-50">12</button>
-                        <button className="px-3 py-1 border border-gray-200 rounded text-gray-600 hover:bg-gray-50">&gt;</button>
+                        <button className="px-3 py-1 border border-gray-100 rounded text-gray-400 hover:bg-gray-50 transition-colors">&lt;</button>
+                        <button className="px-3 py-1 bg-blue-600 text-white rounded shadow-sm font-bold">1</button>
+                        <button className="px-3 py-1 border border-gray-100 rounded text-gray-400 hover:bg-gray-50 transition-colors">2</button>
+                        <button className="px-3 py-1 border border-gray-100 rounded text-gray-400 hover:bg-gray-50 transition-colors">3</button>
+                        <span className="px-2 text-gray-300">...</span>
+                        <button className="px-3 py-1 border border-gray-100 rounded text-gray-400 hover:bg-gray-50 transition-colors">12</button>
+                        <button className="px-3 py-1 border border-gray-100 rounded text-gray-400 hover:bg-gray-50 transition-colors">&gt;</button>
                     </div>
                 </div>
             </div>
@@ -298,7 +424,7 @@ export default function RequestsPage() {
                 request={selectedRequest}
                 onApprove={handleApprove}
                 onReject={handleReject}
-                showActions={false}
+                showActions={true}
             />
 
             {/* Toast Notification */}
