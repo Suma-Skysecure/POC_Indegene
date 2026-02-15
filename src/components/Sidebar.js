@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import clsx from 'clsx';
 import {
     LayoutDashboard,
@@ -53,10 +53,9 @@ const menuItems = [
 
 export default function Sidebar() {
     const pathname = usePathname();
-    const router = useRouter();
 
     return (
-        <aside className="w-64 bg-white border-r border-gray-100 h-screen overflow-y-auto fixed left-0 top-0 z-30 flex flex-col">
+        <aside className="w-64 bg-white border-r border-gray-100 h-screen overflow-y-auto fixed left-0 top-0 z-30">
             <div className="h-16 flex items-center justify-center border-b border-gray-50 mb-4">
                 {/* Logo */}
                 <div className="relative h-8 w-32">
@@ -69,7 +68,7 @@ export default function Sidebar() {
                 </div>
             </div>
 
-            <nav className="p-4 pt-0 space-y-6 flex-1">
+            <nav className="p-4 pt-0 space-y-6">
                 {menuItems.map((section, idx) => (
                     <div key={idx}>
                         <h3 className="text-[11px] font-medium text-gray-400 mb-3 px-3 uppercase tracking-wider">
@@ -101,11 +100,7 @@ export default function Sidebar() {
             </nav>
 
             <div className="p-4 border-t border-gray-50 mt-auto">
-                <button
-                    type="button"
-                    onClick={() => router.push('/login')}
-                    className="flex items-center text-sm font-medium text-gray-400 hover:text-red-500 transition-colors w-full px-3 py-2"
-                >
+                <button className="flex items-center text-sm font-medium text-gray-400 hover:text-red-500 transition-colors w-full px-3 py-2">
                     <LogOut className="mr-3 h-5 w-5" />
                     Sign Out
                 </button>

@@ -2,15 +2,14 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import clsx from 'clsx';
 import {
     LayoutDashboard,
     Search,
     FileText,
     CreditCard,
-    PlusCircle,
-    LogOut
+    PlusCircle
 } from 'lucide-react';
 
 const menuItems = [
@@ -23,11 +22,10 @@ const menuItems = [
 
 export default function UserSidebar() {
     const pathname = usePathname();
-    const router = useRouter();
 
     return (
-        <aside className="w-64 bg-white border-r border-gray-200 fixed left-0 top-16 bottom-0 z-40 overflow-y-auto flex flex-col">
-            <nav className="py-4 flex-1">
+        <aside className="w-64 bg-white border-r border-gray-200 fixed left-0 top-16 bottom-0 z-40 overflow-y-auto">
+            <nav className="py-4">
                 {menuItems.map((item) => {
                     const isActive = pathname === item.href;
                     return (
@@ -50,17 +48,6 @@ export default function UserSidebar() {
                     );
                 })}
             </nav>
-
-            <div className="p-4 border-t border-gray-100 mt-auto">
-                <button
-                    type="button"
-                    onClick={() => router.push('/login')}
-                    className="flex items-center text-sm font-medium text-gray-500 hover:text-red-500 transition-colors w-full px-2 py-2"
-                >
-                    <LogOut className="mr-3 h-5 w-5" />
-                    Sign Out
-                </button>
-            </div>
         </aside>
     );
 }

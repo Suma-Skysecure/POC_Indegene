@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { catalogData } from '@/data/mockData';
 import ToolCard from '@/components/ToolCard';
-import { Search, Package, SlidersHorizontal } from 'lucide-react';
+import { Search, Package, Filter, SlidersHorizontal } from 'lucide-react';
 
 export default function CatalogPage() {
     const [searchTerm, setSearchTerm] = useState('');
@@ -11,31 +11,16 @@ export default function CatalogPage() {
     const [deptFilter, setDeptFilter] = useState('All Departments');
     const [statusFilter, setStatusFilter] = useState('All Status');
 
-    const getName = (item) => item.name || item.softwareName || item['Software Name'] || '';
-    const getVendor = (item) => item.vendor || item.manufacturer || item.Manufacturer || item['Manufacture'] || '';
-    const getCategory = (item) => item.category || item.Category || '';
-    const getType = (item) => item.department || item.softwareType || item['Software Type'] || '';
-    const getStatus = (item) => item.status || '';
-
     // Filter Logic
     const filteredData = catalogData.filter(item => {
-        const searchValue = searchTerm.toLowerCase();
-        const name = getName(item).toLowerCase();
-        const vendor = getVendor(item).toLowerCase();
-        const category = getCategory(item);
-        const type = getType(item);
-        const status = getStatus(item);
-        const matchesSearch = name.includes(searchValue) || vendor.includes(searchValue);
-        const matchesCategory = categoryFilter === 'All Categories' || category === categoryFilter;
-        const matchesDept = deptFilter === 'All Departments' || type === deptFilter;
-        const matchesStatus = statusFilter === 'All Status' || (statusFilter === 'Active' ? (status === 'Active' || status === 'Expiring Soon') : status === statusFilter);
+        const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            item.vendor.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesCategory = categoryFilter === 'All Categories' || item.category === categoryFilter;
+        const matchesDept = deptFilter === 'All Departments' || item.department === deptFilter;
+        const matchesStatus = statusFilter === 'All Status' || (statusFilter === 'Active' ? (item.status === 'Active' || item.status === 'Expiring Soon') : item.status === statusFilter);
 
         return matchesSearch && matchesCategory && matchesDept && matchesStatus;
     });
-
-    const categories = ['All Categories', ...new Set(catalogData.map((item) => getCategory(item)).filter(Boolean))];
-    const departments = ['All Departments', ...new Set(catalogData.map((item) => getType(item)).filter(Boolean))];
-    const statuses = ['All Status', ...new Set(catalogData.map((item) => getStatus(item)).filter(Boolean))];
 
     return (
         <div className="space-y-6">
@@ -71,11 +56,12 @@ export default function CatalogPage() {
                         value={categoryFilter}
                         onChange={(e) => setCategoryFilter(e.target.value)}
                     >
-                        {categories.map((category) => (
-                            <option key={category} value={category}>
-                                {category}
-                            </option>
-                        ))}
+                        <option>All Categories</option>
+                        <option>Design</option>
+                        <option>Communication</option>
+                        <option>Development</option>
+                        <option>Productivity</option>
+                        <option>Sales</option>
                     </select>
 
                     <select
@@ -83,11 +69,11 @@ export default function CatalogPage() {
                         value={deptFilter}
                         onChange={(e) => setDeptFilter(e.target.value)}
                     >
-                        {departments.map((department) => (
-                            <option key={department} value={department}>
-                                {department}
-                            </option>
-                        ))}
+                        <option>All Departments</option>
+                        <option>Product Design</option>
+                        <option>Marketing</option>
+                        <option>Engineering</option>
+                        <option>Sales</option>
                     </select>
 
                     <select
@@ -95,11 +81,10 @@ export default function CatalogPage() {
                         value={statusFilter}
                         onChange={(e) => setStatusFilter(e.target.value)}
                     >
-                        {statuses.map((status) => (
-                            <option key={status} value={status}>
-                                {status}
-                            </option>
-                        ))}
+                        <option>All Status</option>
+                        <option>Active</option>
+                        <option>Trial</option>
+                        <option>Expired</option>
                     </select>
 
                     <button className="flex items-center border border-gray-200 rounded-lg py-2 px-3 text-sm bg-white hover:bg-gray-50 text-gray-700">
