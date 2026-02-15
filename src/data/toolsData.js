@@ -44,11 +44,6 @@ export const EQUIVALENTS = {
         alternative: 'alternative found',
         description: 'PlayStation Network is an approved equivalent tool available in our catalogue. Using approved tools speeds up the access process and ensures compliance.'
     },
-    'figma': {
-        name: 'PlayStation Network',
-        alternative: 'alternative found',
-        description: 'PlayStation Network is an approved equivalent tool available in our catalogue. Using approved tools speeds up the access process and ensures compliance.'
-    },
     'trello': {
         name: 'Jira Software',
         alternative: 'alternative found',

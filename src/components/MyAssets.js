@@ -221,8 +221,6 @@ export default function MyAssets() {
                                 <th className="px-6 py-4">Tool Name</th>
                                 <th className="px-6 py-4">Application ID</th>
                                 <th className="px-6 py-4">Category</th>
-                                <th className="px-6 py-4 text-center">Assigned</th>
-                                <th className="px-6 py-4 text-center">Available</th>
                                 <th className="px-6 py-4">Status</th>
                                 <th className="px-6 py-4">Expiry Date</th>
                             </tr>
@@ -240,8 +238,6 @@ export default function MyAssets() {
                                     </td>
                                     <td className="px-6 py-4 text-sm text-gray-600">{item.appId}</td>
                                     <td className="px-6 py-4 text-sm text-gray-600">{item.category}</td>
-                                    <td className="px-6 py-4 text-sm font-bold text-gray-700 text-center">{item.assigned}</td>
-                                    <td className="px-6 py-4 text-sm text-gray-600 text-center">{item.available}</td>
                                     <td className="px-6 py-4"><AssetStatusBadge status={item.status} /></td>
                                     <td className="px-6 py-4 text-sm text-gray-500">{item.expiry}</td>
                                 </tr>
