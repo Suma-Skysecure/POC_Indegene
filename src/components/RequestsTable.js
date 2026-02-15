@@ -29,7 +29,6 @@ export default function RequestsTable({ requests }) {
                             <th className="px-8 py-5 text-center">Category</th>
                             <th className="px-8 py-5 text-center">Date Submitted</th>
                             <th className="px-8 py-5 text-center">Status</th>
-                            <th className="px-8 py-5 text-right">Assigned Licenses</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -50,7 +49,6 @@ export default function RequestsTable({ requests }) {
                                 <td className="px-8 py-6 text-center">
                                     <StatusBadge status={req.status} />
                                 </td>
-                                <td className="px-8 py-6 text-right text-sm font-bold text-gray-900">{req.assignedLicenses}</td>
                             </tr>
                         ))}
                     </tbody>

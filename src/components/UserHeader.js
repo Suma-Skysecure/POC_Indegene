@@ -1,7 +1,7 @@
 "use client";
 
 import React from 'react';
-import { Search, Bell } from 'lucide-react';
+import { Bell } from 'lucide-react';
 
 export default function UserHeader() {
     return (
@@ -11,17 +11,6 @@ export default function UserHeader() {
                     <span className="text-xs font-bold">S</span>
                 </div>
                 <p className="text-[26px] md:text-lg font-bold text-[#0A4DAA] leading-none">Software Governance Portal</p>
-            </div>
-
-            <div className="hidden md:flex flex-1 justify-center px-8">
-                <div className="relative w-full max-w-sm">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <input
-                        type="text"
-                        placeholder="Search..."
-                        className="w-full h-9 rounded-full border border-gray-200 bg-gray-50 pl-9 pr-3 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                    />
-                </div>
             </div>
 
             <div className="flex items-center space-x-4">
