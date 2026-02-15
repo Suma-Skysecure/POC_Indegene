@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { setCurrentUser } from '@/lib/requestStore';
 
 // Blue-Green Twisted Wave Animation (Canvas)
 const DigitalWaveBackground = () => {
@@ -158,6 +159,7 @@ export default function LoginPage() {
       (username.trim() === 'Admin@indegene.com' && password.trim() === 'Admin@123') ||
       (username.trim() === 'Enduser@indegene.com' && password.trim() === 'Enduser@123')
     ) {
+      setCurrentUser(username.trim());
       // Simulate API delay for better UX
       setTimeout(() => {
         if (username.trim() === 'Enduser@indegene.com') {
