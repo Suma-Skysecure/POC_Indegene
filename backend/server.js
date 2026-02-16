@@ -1,11 +1,18 @@
 const express = require("express");
 const cors = require("cors");
+const fs = require("fs");
+const path = require("path");
+const csv = require("csv-parser");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 let requests = []; // Temporary in-memory storage
+const CATALOG_CSV_PATH = path.join(__dirname, "data", "EPC_Softwarelist.csv");
+
+let catalogCache = null;
+let catalogLoadPromise = null;
 
 const DEFAULT_REQUEST_ID_BASE = 8904;
 const MAX_REASONABLE_REQUEST_ID = 999999;
@@ -40,6 +47,132 @@ const mapRequestType = (requestType = "") => {
   if (value.includes("new software request")) return "New";
   if (value.includes("reuse")) return "Reuse";
   return "New";
+};
+
+const normalizeText = (value = "") =>
+  String(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+
+const STOP_WORDS = new Set([
+  "the",
+  "and",
+  "for",
+  "with",
+  "tool",
+  "tools",
+  "software",
+  "license",
+  "request",
+  "app",
+  "apps",
+  "new",
+]);
+
+const toKeywordSet = (value = "") => {
+  const normalized = normalizeText(value);
+  if (!normalized) return new Set();
+  return new Set(
+    normalized
+      .split(" ")
+      .map((word) => word.trim())
+      .filter((word) => word.length >= 3 && !STOP_WORDS.has(word))
+  );
+};
+
+const normalizeCatalogRow = (row = {}) => {
+  const softwareName = String(row["Software Name"] || "").trim();
+  const category = String(row["Category"] || "").trim();
+  const licenseType = String(row["License Type"] || "").trim();
+  return {
+    softwareName,
+    category,
+    licenseType,
+    normalizedSoftwareName: normalizeText(softwareName),
+    softwareKeywords: toKeywordSet(softwareName),
+  };
+};
+
+const loadCatalog = async () => {
+  if (catalogCache) return catalogCache;
+  if (!catalogLoadPromise) {
+    catalogLoadPromise = new Promise((resolve, reject) => {
+      const rows = [];
+      fs.createReadStream(CATALOG_CSV_PATH)
+        .pipe(csv())
+        .on("data", (row) => {
+          rows.push(normalizeCatalogRow(row));
+        })
+        .on("end", () => {
+          catalogCache = rows;
+          resolve(catalogCache);
+        })
+        .on("error", reject);
+    });
+  }
+  return catalogLoadPromise;
+};
+
+const hasKeywordMatch = (requestTool = "", catalogItem = {}) => {
+  const requestNormalized = normalizeText(requestTool);
+  if (!requestNormalized || !catalogItem.normalizedSoftwareName) return false;
+
+  if (
+    catalogItem.normalizedSoftwareName.includes(requestNormalized) ||
+    requestNormalized.includes(catalogItem.normalizedSoftwareName)
+  ) {
+    return true;
+  }
+
+  const requestKeywords = toKeywordSet(requestNormalized);
+  if (requestKeywords.size === 0) return false;
+
+  for (const keyword of requestKeywords) {
+    if (catalogItem.softwareKeywords.has(keyword)) return true;
+  }
+  return false;
+};
+
+const findMatchingCatalogSoftware = (requestTool = "", catalogItems = []) => {
+  for (const item of catalogItems) {
+    if (hasKeywordMatch(requestTool, item)) return item;
+  }
+  return null;
+};
+
+const isLicenseRequest = (requestType = "", mappedType = "") => {
+  const normalized = String(requestType).trim().toLowerCase();
+  if (normalized === "license request") return true;
+  // Keep compatibility with existing request form value.
+  if (normalized === "new_license") return true;
+  return String(mappedType).toLowerCase() === "reuse";
+};
+
+const shouldAutoApproveRequest = async (requestBody = {}) => {
+  const requestTool = requestBody.tool || requestBody.toolName || "";
+  const requestType = requestBody.requestType || "";
+  const mappedType = requestBody.type || mapRequestType(requestType);
+  const requiredLicenses = Number(
+    requestBody.requiredLicenses
+      ?? requestBody.numberOfUsers
+      ?? requestBody.formPayload?.requiredLicenses
+      ?? 0
+  );
+
+  if (!isLicenseRequest(requestType, mappedType)) return false;
+  if (!Number.isFinite(requiredLicenses) || requiredLicenses > 5) return false;
+
+  const catalogItems = await loadCatalog();
+  const matchedSoftware = findMatchingCatalogSoftware(requestTool, catalogItems);
+  if (!matchedSoftware) return false;
+
+  const isApprovedCategory =
+    String(matchedSoftware.category).trim().toLowerCase() === "approved softwares";
+  const isIdentifiedLicense =
+    String(matchedSoftware.licenseType).trim().toLowerCase() !== "unidentified";
+
+  return isApprovedCategory && isIdentifiedLicense;
 };
 
 const normalizeIncomingRequest = (body = {}) => {
@@ -79,9 +212,13 @@ const normalizeIncomingRequest = (body = {}) => {
   };
 };
 
-const addRequestHandler = (req, res) => {
+const addRequestHandler = async (req, res) => {
+  const autoApproved = await shouldAutoApproveRequest(req.body);
+  const incomingStatus = req.body?.status;
+  const status = incomingStatus || (autoApproved ? "Approved" : "Pending");
+
   const newRequest = {
-    ...normalizeIncomingRequest(req.body),
+    ...normalizeIncomingRequest({ ...req.body, status }),
   };
 
   requests.unshift(newRequest);

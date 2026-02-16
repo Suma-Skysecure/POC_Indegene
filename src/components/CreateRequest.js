@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { Info, ChevronDown, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
-import { addRequestFromForm } from '@/lib/requestStore';
+import { addRequestFromFormAndSync } from '@/lib/requestStore';
 
 export default function CreateRequest() {
     const [requestType, setRequestType] = useState('');
@@ -23,7 +23,7 @@ export default function CreateRequest() {
         setFormData((prev) => ({ ...prev, [field]: value }));
     };
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
         const isValid = requestType
             && formData.toolName.trim()
             && formData.useCase.trim()
@@ -39,7 +39,7 @@ export default function CreateRequest() {
         }
 
         setError('');
-        addRequestFromForm({ requestType, formData });
+        await addRequestFromFormAndSync({ requestType, formData });
         setShowToast(true);
         setTimeout(() => setShowToast(false), 3000);
         setFormData({

@@ -2,6 +2,12 @@ import { requestsData } from '@/data/mockData';
 
 const REQUESTS_STORAGE_KEY = 'indegene_requests_data';
 const CURRENT_USER_STORAGE_KEY = 'indegene_current_user';
+const REQUESTS_API_URL = process.env.NEXT_PUBLIC_REQUESTS_API_URL || 'http://localhost:5000/requests';
+const REQUESTS_API_FALLBACKS = [
+    REQUESTS_API_URL,
+    'http://localhost:5000/requests',
+    'http://localhost:5000/api/requests',
+];
 
 const isBrowser = () => typeof window !== 'undefined';
 
@@ -106,4 +112,106 @@ export const addRequestFromForm = ({ requestType, formData }) => {
     const updated = [newRequest, ...current];
     persistRequests(updated);
     return newRequest;
+};
+
+const normalizeApiRequest = (item = {}) => {
+    const mappedType = item.type || mapRequestType(item.requestType);
+    const id = String(item.id || '').trim();
+    return {
+        id: id.startsWith('#REQ-') ? id : `#REQ-${id.replace(/\D/g, '') || Date.now()}`,
+        tool: item.tool || item.toolName || 'Unknown Tool',
+        requester: item.requester || item.userEmail || 'Unknown User',
+        department: item.department || 'General',
+        date: item.date || formatRequestDate(item.createdAt ? new Date(item.createdAt) : new Date()),
+        status: item.status || 'Pending',
+        type: mappedType,
+        risk: item.risk || 'Low',
+        role: item.role || 'End User',
+        justification: item.justification || item.businessJustification || '',
+        useCase: item.useCase || '',
+        requestOverview: item.requestOverview || {
+            type: mappedType === 'Reuse' ? 'Reuse Request' : 'New Tool Request',
+            tool: item.tool || item.toolName || 'Unknown Tool',
+            vendor: item.vendor || '',
+            department: item.department || 'General',
+            licenses: `${Number(item.requiredLicenses || item.numberOfUsers || 0)} Licenses`,
+            timeline: item.timeline || 'TBD',
+        },
+        formPayload: item.formPayload || {
+            requestType: item.requestType || '',
+            toolName: item.toolName || item.tool || '',
+            useCase: item.useCase || '',
+            vendor: item.vendor || '',
+            requiredLicenses: Number(item.requiredLicenses || item.numberOfUsers || 0),
+            timeline: item.timeline || '',
+            department: item.department || '',
+            businessJustification: item.businessJustification || item.justification || '',
+            userEmail: item.userEmail || item.requester || '',
+        },
+    };
+};
+
+const mapRequestType = (requestType = '') => {
+    const normalized = String(requestType).toLowerCase();
+    if (normalized.includes('license request')) return 'Reuse';
+    if (normalized.includes('new software request')) return 'New';
+    if (normalized.includes('reuse')) return 'Reuse';
+    return 'New';
+};
+
+const mergeById = (base, incoming) => {
+    const merged = new Map();
+    [...incoming, ...base].forEach((item) => {
+        if (!item?.id) return;
+        merged.set(item.id, item);
+    });
+    return Array.from(merged.values());
+};
+
+const postRequestToBackend = async (payload) => {
+    for (const candidate of REQUESTS_API_FALLBACKS) {
+        try {
+            const response = await fetch(candidate, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            if (!response.ok) continue;
+            const data = await response.json();
+            if (data?.request) return normalizeApiRequest(data.request);
+        } catch {
+            // Try next candidate.
+        }
+    }
+    return null;
+};
+
+export const addRequestFromFormAndSync = async ({ requestType, formData }) => {
+    const localRequest = addRequestFromForm({ requestType, formData });
+    const syncedRequest = await postRequestToBackend({
+        id: localRequest.id,
+        tool: formData.toolName,
+        toolName: formData.toolName,
+        requestType: requestType === 'new_license' ? 'License Request' : 'New Software Request',
+        requester: localRequest.requester,
+        userEmail: localRequest.requester,
+        department: formData.department,
+        requiredLicenses: Number(formData.requiredLicenses || 0),
+        numberOfUsers: Number(formData.requiredLicenses || 0),
+        timeline: formData.timeline,
+        vendor: formData.vendor,
+        useCase: formData.useCase,
+        businessJustification: formData.businessJustification,
+        createdAt: new Date().toISOString(),
+    });
+
+    if (!syncedRequest) return localRequest;
+
+    const current = loadRequests();
+    const merged = mergeById(
+        current.filter((item) => item.id !== localRequest.id),
+        [syncedRequest]
+    );
+    persistRequests(merged);
+    return syncedRequest;
 };
