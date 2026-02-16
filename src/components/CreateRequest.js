@@ -62,7 +62,6 @@ export default function CreateRequest() {
                         <div className="bg-[#34A853] p-1 rounded-full text-white">
                             <ShieldCheck className="w-4 h-4" />
                         </div>
-                        <p className="text-[#137333] font-bold text-sm">Submitted successfully!</p>
                     </div>
                 </div>
             )}
@@ -198,7 +197,7 @@ export default function CreateRequest() {
                         <div className="pt-6 space-y-4">
                             <button
                                 onClick={handleSubmit}
-                                className="w-full bg-[#002D72] hover:bg-[#001D4A] text-white py-4.5 rounded-xl font-bold text-lg shadow-md transition-all active:scale-[0.99]"
+                                className="w-full bg-[#002D72] hover:bg-[#001D4A] text-white py-3 rounded-lg font-semibold text-base shadow-md transition-all active:scale-[0.99]"
                             >
                                 Submit Request
                             </button>

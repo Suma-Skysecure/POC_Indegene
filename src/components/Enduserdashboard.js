@@ -53,52 +53,35 @@ function StatusPill({ status }) {
 }
 
 function RecommendedToolCard({ item }) {
-    const used = item.users - item.available;
-    const percent = Math.round((used / item.users) * 100);
-    const remainingPercent = 100 - percent;
-    const isCritical = item.available < item.users * 0.1;
-    const isWarning = item.available < item.users * 0.3;
-
     return (
-        <div className="bg-white rounded-lg border border-gray-100 p-4 shadow-sm">
-            <div className="flex items-start gap-3">
-                <div className="h-9 w-9 rounded-md bg-gray-50 border border-gray-200 flex items-center justify-center">
-                    <item.icon className="h-5 w-5 text-gray-700" />
+        <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-7 flex flex-col justify-between group hover:shadow-xl hover:border-blue-100 transition-all duration-300">
+            <div className="space-y-6">
+                <div className="flex items-start gap-4">
+                    <div className="h-16 w-16 bg-gray-50 rounded-2xl p-3 flex items-center justify-center border border-gray-100 group-hover:border-blue-100 transition-colors">
+                        <item.icon className="h-full w-full text-[#002D72]" />
+                    </div>
+                    <div className="pt-1">
+                        <h4 className="font-extrabold text-[#002D72] text-lg leading-tight group-hover:text-blue-600 transition-colors">{item.name}</h4>
+                        <p className="text-[11px] text-gray-400 font-bold uppercase tracking-widest mt-1">ID: {item.id} • {item.category}</p>
+                    </div>
                 </div>
-                <div>
-                    <h4 className="text-sm font-semibold text-gray-900">{item.name}</h4>
-                    <p className="text-[11px] text-gray-400">ID: {item.id}</p>
-                    <p className="text-[11px] text-gray-500">{item.category}</p>
+
+                <div className="space-y-3">
+                    <div className="text-[11px] font-bold uppercase tracking-widest">
+                        <div className="space-y-1">
+                            <span className="text-gray-400 block">Users</span>
+                            <span className="text-[#002D72] text-sm font-black tabular-nums">{item.users.toLocaleString()}</span>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <div className="mt-4 space-y-1.5 text-xs">
-                <div className="flex justify-between text-gray-500">
-                    <span>Users</span>
-                    <span className="font-semibold text-gray-700">{item.users.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between text-gray-500">
-                    <span>License Availability</span>
-                    <span className="font-semibold text-gray-700">{item.available.toLocaleString()} / {item.users.toLocaleString()}</span>
-                </div>
-                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div
-                        className={`h-full ${isCritical ? 'bg-red-500' : isWarning ? 'bg-amber-500' : 'bg-green-500'}`}
-                        style={{ width: `${percent}%` }}
-                    />
-                </div>
-                <div className="flex justify-between items-center">
-                    {isCritical ? (
-                        <p className="text-[11px] font-medium text-red-500">Almost full. Only a few licenses left.</p>
-                    ) : (
-                        <span />
-                    )}
-                    <p className="text-[11px] text-gray-400 font-semibold">-{remainingPercent}%</p>
-                </div>
-            </div>
-            <button className="mt-3 w-full border border-blue-500 rounded-md py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50 transition-colors">
+            <Link
+                href="/user/request-new?requestType=new_license"
+                className="mt-8 block text-center w-full py-4 text-[#002D72] font-black text-sm border-2 border-[#002D72]/10 rounded-2xl hover:bg-[#002D72] hover:text-white hover:border-[#002D72] hover:shadow-lg transition-all active:scale-[0.98]"
+            >
                 Request License
-            </button>
+            </Link>
         </div>
     );
 }
@@ -165,7 +148,6 @@ export default function Enduserdashboard() {
                         <Mic className="h-3.5 w-3.5" />
                     </button>
                 </div>
-                <p className="text-center text-xs text-gray-500 mt-3">Find tools, check license availability, or request new software.</p>
             </section>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -186,8 +168,6 @@ export default function Enduserdashboard() {
                                 <th className="px-4 py-3">Tool Name</th>
                                 <th className="px-4 py-3">Application ID</th>
                                 <th className="px-4 py-3">Category</th>
-                                <th className="px-4 py-3">Assigned Licenses</th>
-                                <th className="px-4 py-3">Available Licenses</th>
                                 <th className="px-4 py-3">Status</th>
                             </tr>
                         </thead>
@@ -204,8 +184,6 @@ export default function Enduserdashboard() {
                                     </td>
                                     <td className="px-4 py-3.5 text-sm text-gray-600">{row.appId}</td>
                                     <td className="px-4 py-3.5 text-sm text-gray-600">{row.category}</td>
-                                    <td className="px-4 py-3.5 text-sm font-semibold text-gray-700">{row.assigned}</td>
-                                    <td className="px-4 py-3.5 text-sm text-gray-700">{row.available}</td>
                                     <td className="px-4 py-3.5"><StatusPill status={row.status} /></td>
                                 </tr>
                             ))}
@@ -216,7 +194,7 @@ export default function Enduserdashboard() {
 
             <section>
                 <h3 className="text-xl font-semibold text-gray-900 mb-3">Recommended Tools</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                     {recommendedTools.map((item) => (
                         <RecommendedToolCard key={item.id} item={item} />
                     ))}
