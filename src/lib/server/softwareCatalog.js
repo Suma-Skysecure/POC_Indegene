@@ -19,6 +19,52 @@ const HEADER_MAP = {
     "software type": "softwareType",
 };
 
+const MANUFACTURER_DOMAIN_MAP = {
+    adobe: "adobe.com",
+    crowdstrike: "crowdstrike.com",
+    "crowdstrike inc": "crowdstrike.com",
+    "crowdstrike inc ": "crowdstrike.com",
+    "forcepoint llc": "forcepoint.com",
+    "google llc": "google.com",
+    google: "google.com",
+    microsoft: "microsoft.com",
+    "microsoft corporation": "microsoft.com",
+    "microsoft studios": "microsoft.com",
+    "microsoft windows": "microsoft.com",
+    "palo alto networks": "paloaltonetworks.com",
+    tortoisesvn: "tortoisesvn.net",
+    "zscaler inc": "zscaler.com",
+    "zoho corporation pvt ltd": "zohocorp.com",
+};
+
+const SOFTWARE_DOMAIN_MAP = {
+    "crowdstrike windows sensor": "crowdstrike.com",
+    "manageengine uems - agent": "zohocorp.com",
+    "microsoft teams meeting add-in for microsoft office": "microsoft.com",
+    "google chrome": "google.com",
+    globalprotect: "paloaltonetworks.com",
+    zscaler: "zscaler.com",
+    "microsoft onedrive": "microsoft.com",
+    "forcepoint one endpoint": "forcepoint.com",
+    "adobe acrobat reader": "adobe.com",
+    "microsoft teams": "microsoft.com",
+    "microsoft edge": "microsoft.com",
+    "microsoft office professional plus 2019": "microsoft.com",
+    "microsoft office 365 proplus": "microsoft.com",
+    "microsoft visual c++ 2015-2019 redistributable (x64)": "microsoft.com",
+    "microsoft visual c++ 2015-2019 redistributable (x86)": "microsoft.com",
+    "microsoft visual c++ 2013 redistributable (x64)": "microsoft.com",
+    "microsoft visual c++ 2013 redistributable (x86)": "microsoft.com",
+    "microsoft visual c++ 2012 redistributable (x64)": "microsoft.com",
+    "microsoft visual c++ 2012 redistributable (x86)": "microsoft.com",
+    "microsoft visual c++ 2010 redistributable (x64)": "microsoft.com",
+    "microsoft visual c++ 2010 redistributable (x86)": "microsoft.com",
+    tortoisesvn: "tortoisesvn.net",
+    "microsoft visual studio installer": "microsoft.com",
+    "microsoft onenote": "microsoft.com",
+    "microsoft search in bing": "microsoft.com",
+};
+
 function normalizeHeader(header) {
     const cleaned = String(header || "").trim().toLowerCase();
     return HEADER_MAP[cleaned] || cleaned.replace(/\s+/g, "");
@@ -61,13 +107,36 @@ function toInt(value) {
     return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function normalizeManufacturerName(value) {
+    return String(value || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function resolveManufacturerDomain(manufacturer) {
+    const normalized = normalizeManufacturerName(manufacturer);
+    if (!normalized) return "";
+    if (MANUFACTURER_DOMAIN_MAP[normalized]) return MANUFACTURER_DOMAIN_MAP[normalized];
+    if (normalized.startsWith("microsoft")) return "microsoft.com";
+    if (normalized.startsWith("google")) return "google.com";
+    return "";
+}
+
 function normalizeRow(row, index) {
+    const softwareName = row.softwareName || "-";
+    const manufacturer = row.manufacturer || "-";
+    const softwareKey = normalizeManufacturerName(softwareName);
+    const domain = SOFTWARE_DOMAIN_MAP[softwareKey] || resolveManufacturerDomain(manufacturer);
     return {
-        id: `${row.softwareName || "software"}-${index}`,
+        id: `${softwareName || "software"}-${index}`,
         rowIndex: index,
-        softwareName: row.softwareName || "-",
+        softwareName,
         version: row.version || "-",
-        manufacturer: row.manufacturer || "-",
+        manufacturer,
+        logoDomain: domain,
+        logoUrl: domain ? `/api/logo?domain=${encodeURIComponent(domain)}` : "",
         licenseType: row.licenseType || "-",
         category: row.category || "-",
         networkInstallations: toInt(row.networkInstallations),

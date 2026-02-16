@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { Search, Package, AlertCircle } from "lucide-react";
+import { Search, Package, AlertCircle, Shield, LayoutGrid, List } from "lucide-react";
 
 export default function CatalogPage() {
     const [searchInput, setSearchInput] = useState("");
@@ -19,6 +19,8 @@ export default function CatalogPage() {
     const [facets, setFacets] = useState({ categories: [], softwareTypes: [], licenseTypes: [] });
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+    const [viewMode, setViewMode] = useState("list");
+    const [logoAttemptById, setLogoAttemptById] = useState({});
 
     useEffect(() => {
         const handle = setTimeout(() => {
@@ -73,7 +75,43 @@ export default function CatalogPage() {
         return () => controller.abort();
     }, [debouncedQuery, selectedCategory, selectedType, selectedLicense, sortBy, sortOrder, limit, page]);
 
+    useEffect(() => {
+        setLogoAttemptById({});
+    }, [rows]);
+
     const totalPages = Math.max(Math.ceil(total / limit), 1);
+
+    const getLogoCandidates = (tool) => {
+        const domain = String(tool.logoDomain || "").trim().toLowerCase();
+        if (!domain) return [];
+        return [
+            `/api/logo?domain=${encodeURIComponent(domain)}`,
+            `https://logo.clearbit.com/${domain}`,
+            `https://unavatar.io/${domain}`,
+            `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`,
+        ];
+    };
+
+    const getCategoryBadge = (category, fullLabel = false) => {
+        const normalized = String(category || "").trim();
+        const lower = normalized.toLowerCase();
+        if (lower.includes("approved")) {
+            return {
+                label: fullLabel ? "Approved Softwares" : "Approved",
+                className: "bg-emerald-100 text-emerald-700",
+            };
+        }
+        if (lower.includes("not assigned")) {
+            return {
+                label: "Not Assigned",
+                className: "bg-slate-100 text-slate-600",
+            };
+        }
+        return {
+            label: normalized || "-",
+            className: "bg-slate-100 text-slate-600",
+        };
+    };
 
     const getRequestType = (tool) => {
         const category = String(tool.category || "").toLowerCase();
@@ -216,21 +254,52 @@ export default function CatalogPage() {
                 </div>
             </div>
 
+            <div className="flex items-center justify-between">
+                <h2 className="text-2xl font-bold text-slate-900 tracking-tight">
+                    {loading ? "Software Inventory" : `Software Inventory (${total.toLocaleString()})`}
+                </h2>
+                <div className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1">
+                    <button
+                        type="button"
+                        onClick={() => setViewMode("grid")}
+                        className={`inline-flex h-7 w-7 items-center justify-center rounded-md ${
+                            viewMode === "grid" ? "bg-slate-100 text-slate-700" : "text-slate-400 hover:bg-slate-50"
+                        }`}
+                        aria-label="Grid view"
+                        title="Grid view"
+                    >
+                        <LayoutGrid className="h-4 w-4" />
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setViewMode("list")}
+                        className={`inline-flex h-7 w-7 items-center justify-center rounded-md ${
+                            viewMode === "list" ? "bg-slate-100 text-slate-700" : "text-slate-400 hover:bg-slate-50"
+                        }`}
+                        aria-label="List view"
+                        title="List view"
+                    >
+                        <List className="h-4 w-4" />
+                    </button>
+                </div>
+            </div>
+
+            {viewMode === "list" && (
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-x-auto">
                 <table className="w-full min-w-[980px] text-left">
                     <thead>
-                        <tr className="bg-gray-50 border-b border-gray-100 text-[10px] text-gray-500 uppercase tracking-widest font-bold">
-                            <th className="px-4 py-3">Software Name</th>
-                            <th className="px-4 py-3">Version</th>
-                            <th className="px-4 py-3">Manufacturer</th>
-                            <th className="px-4 py-3">License Type</th>
-                            <th className="px-4 py-3">Category</th>
-                            <th className="px-4 py-3">Network ID</th>
-                            <th className="px-4 py-3">Managed ID</th>
-                            <th className="px-4 py-3">Software Type</th>
+                        <tr className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-500 uppercase tracking-[0.08em] font-bold">
+                            <th className="px-4 py-3.5">Software Name</th>
+                            <th className="px-4 py-3.5">Version</th>
+                            <th className="px-4 py-3.5">Manufacturer</th>
+                            <th className="px-4 py-3.5">License Type</th>
+                            <th className="px-4 py-3.5">Category</th>
+                            <th className="px-4 py-3.5">Network ID</th>
+                            <th className="px-4 py-3.5">Managed ID</th>
+                            <th className="px-4 py-3.5">Software Type</th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100">
+                    <tbody className="divide-y divide-slate-100">
                         {loading && (
                             <tr>
                                 <td colSpan={8} className="px-4 py-8 text-center text-sm text-gray-500">
@@ -255,25 +324,121 @@ export default function CatalogPage() {
                                 </td>
                             </tr>
                         )}
-                        {!loading && !error && rows.map((tool) => (
-                            <tr key={tool.id} className="hover:bg-gray-50/60">
-                                <td className="px-4 py-3 text-sm font-semibold text-gray-900">
-                                    <Link href={buildRequestLink(tool)} className="hover:text-blue-700 hover:underline">
-                                        {tool.softwareName}
+                        {!loading && !error && rows.map((tool) => {
+                            const badge = getCategoryBadge(tool.category);
+                            const logoCandidates = getLogoCandidates(tool);
+                            const logoAttempt = logoAttemptById[tool.id] || 0;
+                            const logoSrc = logoCandidates[logoAttempt] || "";
+                            return (
+                            <tr key={tool.id} className="hover:bg-slate-50/70">
+                                <td className="px-4 py-3.5 text-sm font-semibold text-slate-900">
+                                    <Link href={buildRequestLink(tool)} className="group inline-flex items-start gap-2.5 hover:text-blue-700">
+                                        <span className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-blue-100 text-blue-700 overflow-hidden">
+                                            {logoSrc ? (
+                                                <img
+                                                    key={`${tool.id}-table-${logoAttempt}`}
+                                                    src={logoSrc}
+                                                    alt={`${tool.manufacturer} logo`}
+                                                    className="h-5 w-5 object-contain bg-white"
+                                                    loading="lazy"
+                                                    onError={() => {
+                                                        setLogoAttemptById((prev) => ({ ...prev, [tool.id]: logoAttempt + 1 }));
+                                                    }}
+                                                />
+                                            ) : (
+                                                <Shield className="h-3 w-3" />
+                                            )}
+                                        </span>
+                                        <span className="leading-5 group-hover:underline">{tool.softwareName}</span>
                                     </Link>
                                 </td>
-                                <td className="px-4 py-3 text-sm text-gray-700">{tool.version}</td>
-                                <td className="px-4 py-3 text-sm text-gray-700">{tool.manufacturer}</td>
-                                <td className="px-4 py-3 text-sm text-gray-700">{tool.licenseType}</td>
-                                <td className="px-4 py-3 text-sm text-gray-700">{tool.category}</td>
-                                <td className="px-4 py-3 text-sm font-medium text-gray-900">{tool.networkInstallations}</td>
-                                <td className="px-4 py-3 text-sm font-medium text-gray-900">{tool.managedInstallations}</td>
-                                <td className="px-4 py-3 text-sm text-gray-700">{tool.softwareType}</td>
+                                <td className="px-4 py-3.5 text-xs font-medium text-slate-600">{tool.version}</td>
+                                <td className="px-4 py-3.5 text-xs text-slate-600 leading-5">{tool.manufacturer}</td>
+                                <td className="px-4 py-3.5 text-xs text-slate-600">{tool.licenseType}</td>
+                                <td className="px-4 py-3.5 text-xs text-slate-700">
+                                    <span className={`inline-flex items-center rounded-full px-2.5 py-1 font-semibold ${badge.className}`}>
+                                        {badge.label}
+                                    </span>
+                                </td>
+                                <td className="px-4 py-3.5 text-xs font-semibold text-slate-700">{tool.networkInstallations}</td>
+                                <td className="px-4 py-3.5 text-xs font-semibold text-slate-700">{tool.managedInstallations}</td>
+                                <td className="px-4 py-3.5 text-xs text-slate-600">{tool.softwareType}</td>
                             </tr>
-                        ))}
+                        )})}
                     </tbody>
                 </table>
             </div>
+            )}
+
+            {viewMode === "grid" && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                    {loading && (
+                        <div className="col-span-full bg-white rounded-xl border border-slate-200 p-6 text-sm text-slate-500 text-center">
+                            Loading software catalog...
+                        </div>
+                    )}
+                    {!loading && error && (
+                        <div className="col-span-full bg-white rounded-xl border border-red-200 p-6 text-sm text-red-600 text-center">
+                            {error}
+                        </div>
+                    )}
+                    {!loading && !error && rows.length === 0 && (
+                        <div className="col-span-full bg-white rounded-xl border border-slate-200 p-6 text-sm text-slate-500 text-center">
+                            No software found for the selected filters.
+                        </div>
+                    )}
+                    {!loading && !error && rows.map((tool) => {
+                        const categoryBadge = getCategoryBadge(tool.category, true);
+                        const logoCandidates = getLogoCandidates(tool);
+                        const logoAttempt = logoAttemptById[tool.id] || 0;
+                        const logoSrc = logoCandidates[logoAttempt] || "";
+                        return (
+                            <Link
+                                key={tool.id}
+                                href={buildRequestLink(tool)}
+                                className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm hover:shadow-md transition-shadow"
+                            >
+                                <div className="flex items-start gap-3">
+                                    <span className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-700 overflow-hidden">
+                                        {logoSrc ? (
+                                            <img
+                                                key={`${tool.id}-${logoAttempt}`}
+                                                src={logoSrc}
+                                                alt={`${tool.manufacturer} logo`}
+                                                className="h-8 w-8 object-contain bg-white"
+                                                loading="lazy"
+                                                onError={() => {
+                                                    setLogoAttemptById((prev) => ({ ...prev, [tool.id]: logoAttempt + 1 }));
+                                                }}
+                                            />
+                                        ) : (
+                                            <Shield className="h-4 w-4" />
+                                        )}
+                                    </span>
+                                    <div className="min-w-0">
+                                        <p className="text-sm font-semibold text-slate-900 truncate">{tool.softwareName}</p>
+                                        <p className="text-xs text-slate-500">Version {tool.version}</p>
+                                        <p className="text-xs text-slate-500 truncate">{tool.manufacturer}</p>
+                                    </div>
+                                </div>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                    <span className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold bg-slate-100 text-slate-600">
+                                        {tool.licenseType}
+                                    </span>
+                                    <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold ${categoryBadge.className}`}>
+                                        {categoryBadge.label}
+                                    </span>
+                                </div>
+                                <div className="mt-4 space-y-1.5 text-xs text-slate-600">
+                                    <div className="flex justify-between"><span>Network ID:</span><span className="font-semibold text-slate-800">{tool.networkInstallations}</span></div>
+                                    <div className="flex justify-between"><span>Managed ID:</span><span className="font-semibold text-slate-800">{tool.managedInstallations}</span></div>
+                                    <div className="flex justify-between"><span>Type:</span><span className="font-semibold text-slate-800">{tool.softwareType}</span></div>
+                                </div>
+                            </Link>
+                        );
+                    })}
+                </div>
+            )}
 
             <div className="flex items-center justify-between text-sm">
                 <p className="text-gray-500">
