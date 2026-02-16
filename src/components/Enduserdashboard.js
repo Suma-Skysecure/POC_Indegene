@@ -10,8 +10,6 @@ import {
     Search,
     Plus,
     Mic,
-    Gamepad2,
-    Cpu,
     LayoutGrid,
 } from 'lucide-react';
 import { requestsData } from '@/data/requestsData';
@@ -51,48 +49,76 @@ function StatusPill({ status }) {
 }
 
 function RecommendedToolCard({ item }) {
+    const [logoAttempt, setLogoAttempt] = useState(0);
+
+    const logoCandidates = useMemo(() => {
+        const domain = String(item.logoDomain || '').trim().toLowerCase();
+        const candidates = [
+            item.logoUrl || '',
+            domain ? `https://logo.clearbit.com/${domain}` : '',
+            domain ? `https://unavatar.io/${domain}` : '',
+            domain ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64` : '',
+        ].filter(Boolean);
+        return [...new Set(candidates)];
+    }, [item.logoDomain, item.logoUrl]);
+
+    const logoSrc = logoCandidates[logoAttempt] || '';
+    const categoryLabel = String(item.category || '').trim() || 'Not Assigned';
+    const categoryClass = categoryLabel.toLowerCase().includes('approved')
+        ? 'bg-emerald-100 text-emerald-700'
+        : 'bg-slate-100 text-slate-600';
+
     return (
-        <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-7 flex flex-col justify-between group hover:shadow-xl hover:border-blue-100 transition-all duration-300">
-            <div className="space-y-6">
+        <Link
+            href={item.requestLink || '/user/request-new?requestType=new_license'}
+            className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 block hover:shadow-md transition-shadow"
+        >
+            <div className="space-y-5">
                 <div className="flex items-start gap-4">
-                    <div className="h-16 w-16 bg-gray-50 rounded-2xl p-3 flex items-center justify-center border border-gray-100 group-hover:border-blue-100 transition-colors">
-                        <item.icon className="h-full w-full text-[#002D72]" />
+                    <div className="h-12 w-12 bg-gray-50 rounded-xl flex items-center justify-center border border-gray-100 overflow-hidden">
+                        {logoSrc ? (
+                            <img
+                                key={`${item.id}-${logoAttempt}`}
+                                src={logoSrc}
+                                alt={`${item.manufacturer} logo`}
+                                className="h-8 w-8 object-contain bg-white"
+                                loading="lazy"
+                                onError={() => setLogoAttempt((value) => value + 1)}
+                            />
+                        ) : (
+                            <LayoutGrid className="h-5 w-5 text-[#2563EB]" />
+                        )}
                     </div>
-                    <div className="pt-1">
-                        <h4 className="font-extrabold text-[#002D72] text-lg leading-tight group-hover:text-blue-600 transition-colors">{item.name}</h4>
-                        <p className="text-[11px] text-gray-400 font-bold uppercase tracking-widest mt-1">ID: {item.id} • {item.category}</p>
+                    <div className="pt-0.5 min-w-0">
+                        <h4 className="font-extrabold text-[#002D72] text-lg leading-tight truncate">{item.name}</h4>
+                        <p className="text-sm text-[#64748B] leading-tight mt-0.5">Version {item.version}</p>
+                        <p className="text-sm text-[#64748B] leading-tight mt-0.5 truncate">{item.manufacturer}</p>
                     </div>
                 </div>
 
-                <div className="space-y-3">
-                    <div className="text-[11px] font-bold uppercase tracking-widest">
-                        <div className="space-y-1">
-                            <span className="text-gray-400 block">Users</span>
-                            <span className="text-[#002D72] text-sm font-black tabular-nums">{item.users.toLocaleString()}</span>
-                        </div>
-                    </div>
+                <div className="flex flex-wrap gap-2">
+                    <span className="inline-flex items-center rounded-full px-3 py-1.5 text-[10px] font-semibold bg-slate-100 text-slate-700">
+                        {item.licenseType}
+                    </span>
+                    <span className={`inline-flex items-center rounded-full px-3 py-1.5 text-[10px] font-semibold ${categoryClass}`}>
+                        {categoryLabel}
+                    </span>
+                </div>
+
+                <div className="space-y-1.5 text-xs text-[#334155] pt-2">
+                    <div className="flex justify-between"><span>Network ID:</span><span className="font-bold text-[#0F172A]">{item.networkInstallations}</span></div>
+                    <div className="flex justify-between"><span>Managed ID:</span><span className="font-bold text-[#0F172A]">{item.managedInstallations}</span></div>
+                    <div className="flex justify-between"><span>Type:</span><span className="font-bold text-[#0F172A]">{item.softwareType}</span></div>
                 </div>
             </div>
-
-            <Link
-                href="/user/request-new?requestType=new_license"
-                className="mt-8 block text-center w-full py-4 text-[#002D72] font-black text-sm border-2 border-[#002D72]/10 rounded-2xl hover:bg-[#002D72] hover:text-white hover:border-[#002D72] hover:shadow-lg transition-all active:scale-[0.98]"
-            >
-                Request License
-            </Link>
-        </div>
+        </Link>
     );
 }
-
-const recommendedTools = [
-    { name: 'PlayStation Network', id: '983261', category: 'Consumer / Gaming', users: 4820, available: 2410, icon: Gamepad2 },
-    { name: 'Steam', id: '983262', category: 'Consumer / Gaming Platform', users: 6140, available: 60, icon: Activity },
-    { name: 'NVIDIA GeForce NOW', id: '983263', category: 'Consumer / Cloud Gaming', users: 3950, available: 3670, icon: Cpu },
-];
 
 export default function Enduserdashboard() {
     const [searchTerm, setSearchTerm] = useState('');
     const [allRequests, setAllRequests] = useState([]);
+    const [recommendedTools, setRecommendedTools] = useState([]);
 
     const normalizeRequestId = (id = '') => {
         const raw = String(id || '').trim();
@@ -178,6 +204,71 @@ export default function Enduserdashboard() {
     const pendingCount = useMemo(() => allRequests.filter((item) => item.status === 'PENDING').length, [allRequests]);
     const approvedCount = useMemo(() => allRequests.filter((item) => item.status === 'APPROVED').length, [allRequests]);
     const rejectedCount = useMemo(() => allRequests.filter((item) => item.status === 'REJECTED').length, [allRequests]);
+
+    const getRequestType = (tool) => {
+        const category = String(tool.category || '').toLowerCase();
+        const licenseType = String(tool.licenseType || '').toLowerCase();
+        const treatedAsExistingSoftware = category.includes('approved')
+            || (licenseType && licenseType !== 'unidentified' && licenseType !== '-');
+        return treatedAsExistingSoftware ? 'new_license' : 'new_software';
+    };
+
+    useEffect(() => {
+        const controller = new AbortController();
+        const params = new URLSearchParams({
+            sort: 'rowIndex',
+            order: 'asc',
+            limit: '3',
+            offset: '0',
+        });
+
+        const loadRecommendedTools = async () => {
+            try {
+                const response = await fetch(`/api/software?${params.toString()}`, {
+                    signal: controller.signal,
+                });
+                if (!response.ok) {
+                    throw new Error(`Request failed with status ${response.status}`);
+                }
+
+                const payload = await response.json();
+                const items = (Array.isArray(payload.items) ? payload.items : []).map((tool) => {
+                    const query = new URLSearchParams({
+                        requestType: getRequestType(tool),
+                        toolId: tool.id,
+                        toolName: tool.softwareName || '',
+                        vendor: tool.manufacturer || '',
+                        category: tool.category || '',
+                        licenseType: tool.licenseType || '',
+                        softwareType: tool.softwareType || '',
+                        users: String(tool.networkInstallations ?? 1),
+                    });
+
+                    return {
+                        id: tool.id || '-',
+                        name: tool.softwareName || '-',
+                        version: tool.version || '-',
+                        manufacturer: tool.manufacturer || '-',
+                        licenseType: tool.licenseType || 'Unidentified',
+                        category: tool.category || 'Not Assigned',
+                        networkInstallations: Number(tool.networkInstallations) || 0,
+                        managedInstallations: Number(tool.managedInstallations) || 0,
+                        softwareType: tool.softwareType || '-',
+                        logoUrl: tool.logoUrl || '',
+                        logoDomain: tool.logoDomain || '',
+                        requestLink: `/user/request-new?${query.toString()}`,
+                    };
+                });
+                setRecommendedTools(items);
+            } catch (fetchError) {
+                if (fetchError.name === 'AbortError') return;
+                setRecommendedTools([]);
+            }
+        };
+
+        loadRecommendedTools();
+        return () => controller.abort();
+    }, []);
 
     return (
         <div className="max-w-7xl mx-auto pb-10 space-y-5">
@@ -270,11 +361,21 @@ export default function Enduserdashboard() {
             </section>
 
             <section>
-                <h3 className="text-xl font-semibold text-gray-900 mb-3">Recommended Tools</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div className="mb-3 flex items-center justify-between">
+                    <h3 className="text-xl font-semibold text-gray-900">Recommended Tools</h3>
+                    <Link href="/user/search-tools" className="text-sm text-blue-700 font-semibold hover:text-blue-800">
+                        View All
+                    </Link>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {recommendedTools.map((item) => (
                         <RecommendedToolCard key={item.id} item={item} />
                     ))}
+                    {recommendedTools.length === 0 && (
+                        <div className="md:col-span-3 bg-white rounded-xl border border-gray-100 px-4 py-6 text-center text-sm text-gray-500">
+                            No recommended tools available.
+                        </div>
+                    )}
                 </div>
             </section>
         </div>

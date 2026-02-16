@@ -21,11 +21,11 @@ export default function UserHeader() {
 
                 <div className="flex items-center">
                     <div className="text-right mr-3 hidden md:block">
-                        <p className="text-sm font-semibold text-gray-800">Alex Rivera</p>
+                        <p className="text-sm font-semibold text-gray-800">User</p>
                         <p className="text-[10px] uppercase tracking-wide text-gray-400">Employee</p>
                     </div>
                     <div className="h-9 w-9 rounded-full bg-gradient-to-br from-blue-100 to-cyan-100 flex items-center justify-center text-blue-700 font-bold border border-blue-200 shadow-sm">
-                        A
+                        U
                     </div>
                 </div>
             </div>
