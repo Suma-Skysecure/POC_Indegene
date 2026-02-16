@@ -22,7 +22,7 @@ const mapStoreRequestToMyRequest = (req) => ({
     toolName: req.tool,
     toolIcon: req.toolIcon || '',
     type: req.type === 'Reuse' ? 'Reuse' : 'New License',
-    category: req.department || 'General',
+    category: req.requestOverview?.vendor || req.formPayload?.vendor || req.vendor || 'General',
     dateSubmitted: formatUserDate(req.date),
     status: String(req.status || 'Pending').toUpperCase(),
     assignedLicenses: String(req.formPayload?.requiredLicenses || req.formPayload?.numberOfUsers || '-'),
@@ -44,6 +44,32 @@ const parseDateValue = (value) => {
     return Number.isNaN(date.getTime()) ? 0 : date.getTime();
 };
 
+const normalizeRequestId = (id = '') => {
+    const raw = String(id || '').trim();
+    if (!raw) return '#REQ-0';
+    if (raw.toUpperCase().startsWith('#REQ-')) return raw.toUpperCase();
+    const match = raw.match(/(\d+)/);
+    return `#REQ-${match ? match[1] : raw.replace(/\D/g, '') || Date.now()}`;
+};
+
+const mapLegacyRequestToMyRequest = (req) => ({
+    id: normalizeRequestId(req.id),
+    toolName: req.toolName || req.tool || 'Unknown Tool',
+    toolIcon: req.toolIcon || '',
+    type: req.type === 'Reuse' ? 'Reuse' : 'New License',
+    category: req.category || req.vendor || 'General',
+    dateSubmitted: req.dateSubmitted || formatUserDate(req.date),
+    status: String(req.status || 'PENDING').toUpperCase(),
+    assignedLicenses: String(req.assignedLicenses || req.requiredLicenses || '-'),
+    requestType: req.requestType || '',
+    vendor: req.vendor || '',
+    useCase: req.useCase || '',
+    businessJustification: req.businessJustification || '',
+    department: req.department || '',
+    requiredLicenses: req.requiredLicenses || '',
+    timeline: req.timeline || '',
+});
+
 export default function MyRequests() {
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('');
@@ -57,7 +83,16 @@ export default function MyRequests() {
         const storeRequests = loadRequests()
             .filter((req) => req.requester === currentUser)
             .map(mapStoreRequestToMyRequest);
-        const merged = [...storeRequests, ...requestsData.filter(base => !storeRequests.some(r => r.id === base.id))];
+
+        const legacyRequests = requestsData
+            .map(mapLegacyRequestToMyRequest)
+            .filter((base) => !storeRequests.some((r) => normalizeRequestId(r.id) === normalizeRequestId(base.id)));
+
+        const merged = [...storeRequests, ...legacyRequests].map((item) => ({
+            ...item,
+            id: normalizeRequestId(item.id),
+        }));
+
         setAllRequests(merged);
     }, []);
 

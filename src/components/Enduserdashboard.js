@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
     Activity,
@@ -10,14 +10,12 @@ import {
     Search,
     Plus,
     Mic,
-    Mail,
-    Folder,
-    Share2,
-    Building2,
-    Users,
     Gamepad2,
     Cpu,
+    LayoutGrid,
 } from 'lucide-react';
+import { requestsData } from '@/data/requestsData';
+import { getCurrentUser, loadRequests } from '@/lib/requestStore';
 
 function StatCard({ label, value, tone, icon: Icon }) {
     const tones = {
@@ -86,14 +84,6 @@ function RecommendedToolCard({ item }) {
     );
 }
 
-const assignedLicenses = [
-    { tool: 'Outlook (Office 365)', appId: '65539', category: 'Web Mail', assigned: 1, available: '5,599', status: 'ACTIVE', icon: Mail },
-    { tool: 'OneDrive', appId: '1310789', category: 'File Sharing', assigned: 1, available: '5,594', status: 'ACTIVE', icon: Folder },
-    { tool: 'SharePoint Online', appId: '655377', category: 'Collaboration', assigned: 1, available: '5,533', status: 'ACTIVE', icon: Share2 },
-    { tool: 'Citrix', appId: '1245859', category: 'IT Services', assigned: 1, available: '993', status: 'ACTIVE', icon: Building2 },
-    { tool: 'SAP SuccessFactors', appId: '2097159', category: 'Human Resources', assigned: 1, available: '4,763', status: 'ACTIVE', icon: Users },
-];
-
 const recommendedTools = [
     { name: 'PlayStation Network', id: '983261', category: 'Consumer / Gaming', users: 4820, available: 2410, icon: Gamepad2 },
     { name: 'Steam', id: '983262', category: 'Consumer / Gaming Platform', users: 6140, available: 60, icon: Activity },
@@ -102,16 +92,92 @@ const recommendedTools = [
 
 export default function Enduserdashboard() {
     const [searchTerm, setSearchTerm] = useState('');
+    const [allRequests, setAllRequests] = useState([]);
+
+    const normalizeRequestId = (id = '') => {
+        const raw = String(id || '').trim();
+        if (!raw) return '#REQ-0';
+        if (raw.toUpperCase().startsWith('#REQ-')) return raw.toUpperCase();
+        const match = raw.match(/(\d+)/);
+        return `#REQ-${match ? match[1] : raw.replace(/\D/g, '') || Date.now()}`;
+    };
+
+    const formatUserDate = (dateStr) => {
+        const date = new Date(dateStr);
+        if (Number.isNaN(date.getTime())) return dateStr;
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = date.toLocaleString('en-US', { month: 'short' });
+        const year = date.getFullYear();
+        return `${day}-${month}-${year}`;
+    };
+
+    const parseDateValue = (value) => {
+        const fromNative = new Date(value);
+        if (!Number.isNaN(fromNative.getTime())) return fromNative.getTime();
+        const match = String(value).match(/^(\d{2})-([A-Za-z]{3})-(\d{4})$/);
+        if (!match) return 0;
+        const date = new Date(`${match[2]} ${match[1]}, ${match[3]}`);
+        return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+    };
+
+    const mapStoreRequestToMyRequest = (req) => ({
+        id: normalizeRequestId(req.id),
+        toolName: req.tool || req.toolName || 'Unknown Tool',
+        toolIcon: req.toolIcon || '',
+        type: req.type === 'Reuse' ? 'Reuse' : 'New License',
+        category: req.requestOverview?.vendor || req.formPayload?.vendor || req.vendor || 'General',
+        dateSubmitted: formatUserDate(req.date),
+        status: String(req.status || 'Pending').toUpperCase(),
+    });
+
+    const mapLegacyRequestToMyRequest = (req) => ({
+        id: normalizeRequestId(req.id),
+        toolName: req.toolName || req.tool || 'Unknown Tool',
+        toolIcon: req.toolIcon || '',
+        type: req.type === 'Reuse' ? 'Reuse' : 'New License',
+        category: req.category || req.vendor || 'General',
+        dateSubmitted: req.dateSubmitted || formatUserDate(req.date),
+        status: String(req.status || 'PENDING').toUpperCase(),
+    });
+
+    useEffect(() => {
+        const currentUser = getCurrentUser();
+        const storeRequests = loadRequests()
+            .filter((req) => req.requester === currentUser)
+            .map(mapStoreRequestToMyRequest);
+
+        const legacyRequests = requestsData
+            .map(mapLegacyRequestToMyRequest)
+            .filter((base) => !storeRequests.some((r) => normalizeRequestId(r.id) === normalizeRequestId(base.id)));
+
+        setAllRequests([...storeRequests, ...legacyRequests]);
+    }, []);
+
+    const assignedLicenses = useMemo(() => {
+        return allRequests
+            .filter((item) => item.status === 'APPROVED')
+            .sort((a, b) => parseDateValue(b.dateSubmitted) - parseDateValue(a.dateSubmitted))
+            .slice(0, 5)
+            .map((item) => ({
+                ...item,
+                requestId: normalizeRequestId(item.id),
+                status: 'ACTIVE',
+            }));
+    }, [allRequests]);
 
     const visibleLicenses = useMemo(() => {
         const value = searchTerm.toLowerCase().trim();
         if (!value) return assignedLicenses;
         return assignedLicenses.filter((item) =>
-            item.tool.toLowerCase().includes(value) ||
-            item.appId.toLowerCase().includes(value) ||
+            item.toolName.toLowerCase().includes(value) ||
+            item.requestId.toLowerCase().includes(value) ||
             item.category.toLowerCase().includes(value)
         );
-    }, [searchTerm]);
+    }, [searchTerm, assignedLicenses]);
+
+    const pendingCount = useMemo(() => allRequests.filter((item) => item.status === 'PENDING').length, [allRequests]);
+    const approvedCount = useMemo(() => allRequests.filter((item) => item.status === 'APPROVED').length, [allRequests]);
+    const rejectedCount = useMemo(() => allRequests.filter((item) => item.status === 'REJECTED').length, [allRequests]);
 
     return (
         <div className="max-w-7xl mx-auto pb-10 space-y-5">
@@ -141,7 +207,7 @@ export default function Enduserdashboard() {
                         type="text"
                         value={searchTerm}
                         onChange={(event) => setSearchTerm(event.target.value)}
-                        placeholder="Search for a tool (e.g., Figma, Canva, Tableau)"
+                        placeholder="Search approved requests by tool, request ID, or category"
                         className="w-full border border-gray-300 bg-white text-gray-900 placeholder:text-gray-400 rounded-lg pl-10 pr-11 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100"
                     />
                     <button className="absolute right-2 top-1/2 -translate-y-1/2 h-7 w-7 rounded-md border border-gray-200 text-gray-500 flex items-center justify-center">
@@ -151,39 +217,50 @@ export default function Enduserdashboard() {
             </section>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <StatCard label="Pending Requests" value="2" tone="pending" icon={Clock3} />
-                <StatCard label="Approved" value="5" tone="approved" icon={CheckCircle2} />
-                <StatCard label="Rejected" value="1" tone="rejected" icon={CircleX} />
+                <StatCard label="Pending Requests" value={String(pendingCount)} tone="pending" icon={Clock3} />
+                <StatCard label="Approved" value={String(approvedCount)} tone="approved" icon={CheckCircle2} />
+                <StatCard label="Rejected" value={String(rejectedCount)} tone="rejected" icon={CircleX} />
             </div>
 
             <section className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm">
                 <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
                     <h2 className="text-xl font-semibold text-gray-900">My Assigned Licenses</h2>
-                    <button className="text-sm text-blue-700 font-semibold hover:text-blue-800">View All</button>
+                    <Link href="/user/my-assets" className="text-sm text-blue-700 font-semibold hover:text-blue-800">
+                        View All
+                    </Link>
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full min-w-[980px] text-left">
                         <thead>
                             <tr className="bg-gray-50 text-[10px] uppercase tracking-widest text-gray-400 font-bold">
                                 <th className="px-4 py-3">Tool Name</th>
-                                <th className="px-4 py-3">Application ID</th>
+                                <th className="px-4 py-3">Request ID</th>
                                 <th className="px-4 py-3">Category</th>
+                                <th className="px-4 py-3">Date Submitted</th>
                                 <th className="px-4 py-3">Status</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
+                            {visibleLicenses.length === 0 && (
+                                <tr>
+                                    <td colSpan={5} className="px-4 py-6 text-sm text-gray-500 text-center">
+                                        No approved requests found.
+                                    </td>
+                                </tr>
+                            )}
                             {visibleLicenses.map((row) => (
-                                <tr key={row.appId} className="hover:bg-gray-50/50">
+                                <tr key={row.requestId} className="hover:bg-gray-50/50">
                                     <td className="px-4 py-3.5">
                                         <div className="flex items-center gap-2.5">
                                             <span className="h-7 w-7 rounded-md bg-gray-50 border border-gray-200 flex items-center justify-center">
-                                                <row.icon className="h-4 w-4 text-blue-600" />
+                                                <LayoutGrid className="h-4 w-4 text-blue-600" />
                                             </span>
-                                            <span className="text-sm font-semibold text-gray-900">{row.tool}</span>
+                                            <span className="text-sm font-semibold text-gray-900">{row.toolName}</span>
                                         </div>
                                     </td>
-                                    <td className="px-4 py-3.5 text-sm text-gray-600">{row.appId}</td>
+                                    <td className="px-4 py-3.5 text-sm text-gray-600">{row.requestId}</td>
                                     <td className="px-4 py-3.5 text-sm text-gray-600">{row.category}</td>
+                                    <td className="px-4 py-3.5 text-sm text-gray-600">{row.dateSubmitted}</td>
                                     <td className="px-4 py-3.5"><StatusPill status={row.status} /></td>
                                 </tr>
                             ))}

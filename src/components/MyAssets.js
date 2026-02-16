@@ -1,7 +1,9 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Download, Eye, CheckCircle2, Clock3, Ban, Mail, Folder, CalendarDays, NotebookPen, MessageSquare, FileText, FileSpreadsheet, Presentation, PenTool, Info, ShieldAlert } from "lucide-react";
+import { requestsData } from "@/data/requestsData";
+import { getCurrentUser, loadRequests } from "@/lib/requestStore";
 
 function AssetStatCard({ label, value, tone, icon: Icon }) {
     const toneStyles = {
@@ -78,35 +80,110 @@ function PolicyCard({ title, description, badge, actionText, tone, icon: Icon })
 }
 
 const assetsData = [
-    { tool: "Outlook (Office 365)", appId: "65539", category: "Web Mail", assigned: 1, available: "5,599", status: "ACTIVE", expiry: "Dec 31, 2025", icon: Mail },
-    { tool: "OneDrive", appId: "65540", category: "Cloud Storage", assigned: 1, available: "5,599", status: "ACTIVE", expiry: "Dec 31, 2025", icon: Folder },
-    { tool: "Outlook Calendar", appId: "65541", category: "Productivity", assigned: 1, available: "5,599", status: "ACTIVE", expiry: "Dec 31, 2025", icon: CalendarDays },
-    { tool: "OneNote", appId: "65542", category: "Productivity", assigned: 1, available: "5,599", status: "ACTIVE", expiry: "Dec 31, 2025", icon: NotebookPen },
-    { tool: "Teams", appId: "65543", category: "Communication", assigned: 1, available: "5,599", status: "ACTIVE", expiry: "Dec 31, 2025", icon: MessageSquare },
-    { tool: "Word", appId: "65544", category: "Productivity", assigned: 1, available: "5,599", status: "ACTIVE", expiry: "Dec 31, 2025", icon: FileText },
-    { tool: "Excel", appId: "65545", category: "Productivity", assigned: 1, available: "5,599", status: "ACTIVE", expiry: "Dec 31, 2025", icon: FileSpreadsheet },
-    { tool: "PowerPoint", appId: "65546", category: "Productivity", assigned: 1, available: "5,599", status: "ACTIVE", expiry: "Dec 31, 2025", icon: Presentation },
-    { tool: "Figma", appId: "65547", category: "Design", assigned: 0, available: "0", status: "EXPIRED", expiry: "Dec 31, 2023", icon: PenTool },
-    { tool: "Slack", appId: "65548", category: "Communication", assigned: 0, available: "0", status: "EXPIRED", expiry: "Dec 31, 2023", icon: MessageSquare },
+    { tool: "Outlook (Office 365)", requestId: "#REQ-65539", category: "Web Mail", assigned: 1, available: "5,599", status: "ACTIVE", dateSubmitted: "Dec 31, 2025", icon: Mail },
+    { tool: "OneDrive", requestId: "#REQ-65540", category: "Cloud Storage", assigned: 1, available: "5,599", status: "ACTIVE", dateSubmitted: "Dec 31, 2025", icon: Folder },
+    { tool: "Outlook Calendar", requestId: "#REQ-65541", category: "Productivity", assigned: 1, available: "5,599", status: "ACTIVE", dateSubmitted: "Dec 31, 2025", icon: CalendarDays },
+    { tool: "OneNote", requestId: "#REQ-65542", category: "Productivity", assigned: 1, available: "5,599", status: "ACTIVE", dateSubmitted: "Dec 31, 2025", icon: NotebookPen },
+    { tool: "Teams", requestId: "#REQ-65543", category: "Communication", assigned: 1, available: "5,599", status: "ACTIVE", dateSubmitted: "Dec 31, 2025", icon: MessageSquare },
+    { tool: "Word", requestId: "#REQ-65544", category: "Productivity", assigned: 1, available: "5,599", status: "ACTIVE", dateSubmitted: "Dec 31, 2025", icon: FileText },
+    { tool: "Excel", requestId: "#REQ-65545", category: "Productivity", assigned: 1, available: "5,599", status: "ACTIVE", dateSubmitted: "Dec 31, 2025", icon: FileSpreadsheet },
+    { tool: "PowerPoint", requestId: "#REQ-65546", category: "Productivity", assigned: 1, available: "5,599", status: "ACTIVE", dateSubmitted: "Dec 31, 2025", icon: Presentation },
+    { tool: "Figma", requestId: "#REQ-65547", category: "Design", assigned: 0, available: "0", status: "EXPIRED", dateSubmitted: "Dec 31, 2023", icon: PenTool },
+    { tool: "Slack", requestId: "#REQ-65548", category: "Communication", assigned: 0, available: "0", status: "EXPIRED", dateSubmitted: "Dec 31, 2023", icon: MessageSquare },
 ];
+
+const normalizeRequestId = (id = "") => {
+    const raw = String(id || "").trim();
+    if (!raw) return "#REQ-0";
+    if (raw.toUpperCase().startsWith("#REQ-")) return raw.toUpperCase();
+    const match = raw.match(/(\d+)/);
+    return `#REQ-${match ? match[1] : raw.replace(/\D/g, "") || Date.now()}`;
+};
+
+const formatUserDate = (dateStr) => {
+    const date = new Date(dateStr);
+    if (Number.isNaN(date.getTime())) return dateStr;
+    const day = String(date.getDate()).padStart(2, "0");
+    const month = date.toLocaleString("en-US", { month: "short" });
+    const year = date.getFullYear();
+    return `${day}-${month}-${year}`;
+};
+
+const parseDateValue = (value) => {
+    const fromNative = new Date(value);
+    if (!Number.isNaN(fromNative.getTime())) return fromNative.getTime();
+    const match = String(value).match(/^(\d{2})-([A-Za-z]{3})-(\d{4})$/);
+    if (!match) return 0;
+    const date = new Date(`${match[2]} ${match[1]}, ${match[3]}`);
+    return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+};
+
+const mapStoreRequestToAsset = (req) => ({
+    tool: req.tool || req.toolName || "Unknown Tool",
+    requestId: normalizeRequestId(req.id),
+    category: req.requestOverview?.vendor || req.formPayload?.vendor || req.vendor || "General",
+    assigned: Number(req.formPayload?.requiredLicenses || req.formPayload?.numberOfUsers || 1),
+    available: "-",
+    status: "ACTIVE",
+    dateSubmitted: formatUserDate(req.date),
+    icon: FileText,
+    source: "request",
+});
+
+const mapLegacyRequestToAsset = (req) => ({
+    tool: req.toolName || req.tool || "Unknown Tool",
+    requestId: normalizeRequestId(req.id),
+    category: req.category || req.vendor || "General",
+    assigned: Number(req.assignedLicenses || req.requiredLicenses || 1),
+    available: "-",
+    status: "ACTIVE",
+    dateSubmitted: req.dateSubmitted || formatUserDate(req.date),
+    icon: FileText,
+    source: "request",
+});
 
 export default function MyAssets() {
     const [searchTerm, setSearchTerm] = useState("");
     const [statusFilter, setStatusFilter] = useState("");
     const [categoryFilter, setCategoryFilter] = useState("");
     const [sortBy, setSortBy] = useState("newest");
+    const [approvedRequestAssets, setApprovedRequestAssets] = useState([]);
+
+    useEffect(() => {
+        const currentUser = getCurrentUser();
+        const storeRequestAssets = loadRequests()
+            .filter((req) => req.requester === currentUser)
+            .filter((req) => String(req.status || "").toUpperCase() === "APPROVED")
+            .map(mapStoreRequestToAsset);
+
+        const legacyRequestAssets = requestsData
+            .filter((req) => String(req.status || "").toUpperCase() === "APPROVED")
+            .map(mapLegacyRequestToAsset)
+            .filter((base) => !storeRequestAssets.some((item) => item.requestId === base.requestId));
+
+        const merged = [...storeRequestAssets, ...legacyRequestAssets];
+        merged.sort((a, b) => parseDateValue(b.dateSubmitted) - parseDateValue(a.dateSubmitted));
+        setApprovedRequestAssets(merged);
+    }, []);
+
+    const allAssets = useMemo(() => {
+        const existing = assetsData.map((item) => ({ ...item, source: "existing" }));
+        const existingIds = new Set(existing.map((item) => item.requestId));
+        const uniqueApproved = approvedRequestAssets.filter((item) => !existingIds.has(item.requestId));
+        return [...uniqueApproved, ...existing];
+    }, [approvedRequestAssets]);
 
     const categories = useMemo(
-        () => [...new Set(assetsData.map((item) => item.category))],
-        []
+        () => [...new Set(allAssets.map((item) => item.category))],
+        [allAssets]
     );
 
     const filteredAssets = useMemo(() => {
-        const list = assetsData.filter((item) => {
+        const list = allAssets.filter((item) => {
             const term = searchTerm.toLowerCase();
             const matchesSearch =
                 item.tool.toLowerCase().includes(term) ||
-                item.appId.toLowerCase().includes(term) ||
+                item.requestId.toLowerCase().includes(term) ||
                 item.category.toLowerCase().includes(term);
             const matchesStatus = !statusFilter || item.status === statusFilter;
             const matchesCategory = !categoryFilter || item.category === categoryFilter;
@@ -114,18 +191,19 @@ export default function MyAssets() {
         });
 
         const sorted = [...list];
-        if (sortBy === "oldest") {
-            sorted.sort((a, b) => a.tool.localeCompare(b.tool));
-        } else {
-            sorted.sort((a, b) => b.tool.localeCompare(a.tool));
-        }
+        // Keep approved requests first, then existing licenses.
+        sorted.sort((a, b) => {
+            if (a.source !== b.source) return a.source === "request" ? -1 : 1;
+            const delta = parseDateValue(a.dateSubmitted) - parseDateValue(b.dateSubmitted);
+            return sortBy === "oldest" ? delta : -delta;
+        });
         return sorted;
-    }, [searchTerm, statusFilter, categoryFilter, sortBy]);
+    }, [allAssets, searchTerm, statusFilter, categoryFilter, sortBy]);
 
-    const total = assetsData.length;
-    const active = assetsData.filter((item) => item.status === "ACTIVE").length;
-    const expired = assetsData.filter((item) => item.status === "EXPIRED").length;
-    const expiringSoon = assetsData.filter((item) => item.status === "ACTIVE" && item.expiry === "Dec 31, 2025").length;
+    const total = allAssets.length;
+    const active = allAssets.filter((item) => item.status === "ACTIVE").length;
+    const expired = allAssets.filter((item) => item.status === "EXPIRED").length;
+    const expiringSoon = allAssets.filter((item) => item.status === "ACTIVE" && item.dateSubmitted === "Dec 31, 2025").length;
 
     return (
         <div className="max-w-7xl mx-auto pb-10 space-y-7">
@@ -172,7 +250,7 @@ export default function MyAssets() {
                             type="text"
                             value={searchTerm}
                             onChange={(event) => setSearchTerm(event.target.value)}
-                            placeholder="Search requests by tool name, ID, or keyword..."
+                            placeholder="Search requests by tool name, request ID, or keyword..."
                             className="w-full border border-gray-300 bg-white text-gray-900 placeholder:text-gray-500 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
                         />
                         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
@@ -219,15 +297,15 @@ export default function MyAssets() {
                         <thead>
                             <tr className="bg-gray-50/70 border-b border-gray-100 text-[10px] text-gray-400 uppercase tracking-widest font-bold">
                                 <th className="px-6 py-4">Tool Name</th>
-                                <th className="px-6 py-4">Application ID</th>
+                                <th className="px-6 py-4">Request ID</th>
                                 <th className="px-6 py-4">Category</th>
                                 <th className="px-6 py-4">Status</th>
-                                <th className="px-6 py-4">Expiry Date</th>
+                                <th className="px-6 py-4">Date Submitted</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                             {filteredAssets.map((item) => (
-                                <tr key={item.appId} className="hover:bg-gray-50/50 transition-colors">
+                                <tr key={item.requestId} className="hover:bg-gray-50/50 transition-colors">
                                     <td className="px-6 py-4">
                                         <div className="flex items-center gap-3">
                                             <div className="h-8 w-8 rounded-md border border-gray-100 bg-gray-50 flex items-center justify-center">
@@ -236,10 +314,10 @@ export default function MyAssets() {
                                             <span className="text-sm font-bold text-gray-900">{item.tool}</span>
                                         </div>
                                     </td>
-                                    <td className="px-6 py-4 text-sm text-gray-600">{item.appId}</td>
+                                    <td className="px-6 py-4 text-sm text-gray-600">{item.requestId}</td>
                                     <td className="px-6 py-4 text-sm text-gray-600">{item.category}</td>
                                     <td className="px-6 py-4"><AssetStatusBadge status={item.status} /></td>
-                                    <td className="px-6 py-4 text-sm text-gray-500">{item.expiry}</td>
+                                    <td className="px-6 py-4 text-sm text-gray-500">{item.dateSubmitted}</td>
                                 </tr>
                             ))}
                         </tbody>

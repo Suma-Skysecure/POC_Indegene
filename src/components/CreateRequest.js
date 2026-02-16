@@ -199,6 +199,9 @@ export default function CreateRequest() {
                         <div className="bg-[#34A853] p-1 rounded-full text-white">
                             <ShieldCheck className="w-4 h-4" />
                         </div>
+                        <p className="text-sm font-semibold text-[#1B5E20]">
+                            Your request has been submitted and is waiting for approval.
+                        </p>
                     </div>
                 </div>
             )}
