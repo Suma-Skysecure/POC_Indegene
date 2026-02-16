@@ -32,13 +32,24 @@ export default function RequestsTable({ requests }) {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
+                        {requests.length === 0 && (
+                            <tr>
+                                <td colSpan={7} className="px-8 py-10 text-center text-sm font-medium text-gray-400">
+                                    No requests found.
+                                </td>
+                            </tr>
+                        )}
                         {requests.map((req) => (
                             <tr key={req.id} className="hover:bg-gray-50/50 transition-all duration-200 group">
                                 <td className="px-8 py-6 text-sm font-bold text-gray-900">{req.id}</td>
                                 <td className="px-8 py-6">
                                     <div className="flex items-center gap-4">
                                         <div className="h-10 w-10 bg-gray-50 rounded-lg p-2 border border-gray-100 group-hover:border-blue-100 group-hover:bg-white transition-all">
-                                            <img src={req.toolIcon} alt={req.toolName} className="h-full w-full object-contain" />
+                                            {req.toolIcon ? (
+                                                <img src={req.toolIcon} alt={req.toolName} className="h-full w-full object-contain" />
+                                            ) : (
+                                                <LayoutGrid className="h-full w-full text-gray-300" />
+                                            )}
                                         </div>
                                         <span className="font-bold text-gray-900 text-sm">{req.toolName}</span>
                                     </div>

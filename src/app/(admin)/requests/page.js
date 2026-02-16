@@ -1,12 +1,86 @@
 "use client";
 
-import React, { useState } from 'react';
-import { requestsData } from '@/data/mockData';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Table from '@/components/Table';
 import RequestDetailsSidebar from '@/components/RequestDetailsSidebar';
-import { Search, Filter, Download, Clock, CheckCircle, Hourglass, AlertTriangle, CheckSquare, XSquare } from 'lucide-react';
+import { Search, Filter, Download, Clock, CheckCircle, Hourglass, AlertTriangle, CheckSquare, XSquare, Trash2 } from 'lucide-react';
 import clsx from 'clsx';
 import Link from 'next/link';
+import { loadRequests, persistRequests } from '@/lib/requestStore';
+
+const REQUESTS_API_URL = process.env.NEXT_PUBLIC_REQUESTS_API_URL || 'http://localhost:5000/requests';
+const REQUESTS_API_FALLBACKS = [
+    REQUESTS_API_URL,
+    'http://localhost:5000/requests',
+    'http://localhost:5000/api/requests',
+];
+
+const formatDisplayDate = (value) => {
+    const date = new Date(value || Date.now());
+    if (Number.isNaN(date.getTime())) {
+        return new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+    }
+    return date.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+};
+
+const mapRequestType = (requestType = '') => {
+    const normalized = String(requestType).toLowerCase();
+    if (normalized.includes('license request')) return 'Reuse';
+    if (normalized.includes('new software request')) return 'New';
+    if (normalized.includes('reuse')) return 'Reuse';
+    return 'New';
+};
+
+const extractRequestNumber = (id = '') => {
+    const match = String(id).match(/(\d+)/);
+    return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+};
+
+const normalizeApiRequest = (item = {}) => {
+    const type = item.type || mapRequestType(item.requestType);
+    const id = String(item.id || '').trim();
+    return {
+        id: id.startsWith('#REQ-') ? id : `#REQ-${id.replace(/\D/g, '') || Date.now()}`,
+        tool: item.tool || item.toolName || 'Unknown Tool',
+        requester: item.requester || item.userEmail || 'Unknown User',
+        department: item.department || 'General',
+        date: item.date || formatDisplayDate(item.createdAt),
+        status: item.status || 'Pending',
+        type,
+        risk: item.risk || 'Low',
+        role: item.role || 'End User',
+        justification: item.justification || item.businessJustification || '',
+        useCase: item.useCase || '',
+        requestOverview: item.requestOverview || {
+            type: type === 'Reuse' ? 'Reuse Request' : 'New Tool Request',
+            tool: item.tool || item.toolName || 'Unknown Tool',
+            vendor: item.vendor || '',
+            department: item.department || 'General',
+            licenses: `${Number(item.requiredLicenses || item.numberOfUsers || 0)} Licenses`,
+            timeline: item.timeline || 'TBD',
+        },
+        formPayload: item.formPayload || {
+            requestType: item.requestType || '',
+            toolName: item.toolName || item.tool || '',
+            useCase: item.useCase || '',
+            vendor: item.vendor || '',
+            requiredLicenses: Number(item.requiredLicenses || item.numberOfUsers || 0),
+            timeline: item.timeline || '',
+            department: item.department || '',
+            businessJustification: item.businessJustification || item.justification || '',
+            userEmail: item.userEmail || item.requester || '',
+        },
+    };
+};
+
+const mergeById = (base, incoming) => {
+    const merged = new Map();
+    [...incoming, ...base].forEach((item) => {
+        if (!item?.id) return;
+        merged.set(item.id, item);
+    });
+    return Array.from(merged.values());
+};
 
 // Simple Stat Card for this specific page layout
 const StatCard = ({ title, value, icon: Icon, colorClass, bgClass }) => (
@@ -22,7 +96,7 @@ const StatCard = ({ title, value, icon: Icon, colorClass, bgClass }) => (
 );
 
 export default function RequestsPage() {
-    const [currentRequests, setCurrentRequests] = useState(requestsData);
+    const [currentRequests, setCurrentRequests] = useState(() => loadRequests());
     const [searchTerm, setSearchTerm] = useState('');
     const [activeTab, setActiveTab] = useState('All Requests');
     const [filterType, setFilterType] = useState('All Types');
@@ -31,6 +105,67 @@ export default function RequestsPage() {
     const [selectedRequest, setSelectedRequest] = useState(null);
     const [selectedIds, setSelectedIds] = useState([]);
     const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+    const [currentPage, setCurrentPage] = useState(1);
+    const [activeApiUrl, setActiveApiUrl] = useState(REQUESTS_API_URL);
+    const ITEMS_PER_PAGE = 7;
+
+    const getStatusEndpoint = useCallback((baseUrl, id) => {
+        const sanitized = String(baseUrl || '').replace(/\/+$/, '');
+        if (sanitized.endsWith('/api/requests')) {
+            return `${sanitized}/${encodeURIComponent(id)}/status`;
+        }
+        if (sanitized.endsWith('/requests')) {
+            return `${sanitized}/${encodeURIComponent(id)}/status`;
+        }
+        return `${sanitized}/requests/${encodeURIComponent(id)}/status`;
+    }, []);
+
+    const getDeleteEndpoint = useCallback((baseUrl) => {
+        const sanitized = String(baseUrl || '').replace(/\/+$/, '');
+        if (sanitized.endsWith('/api/requests')) return sanitized;
+        if (sanitized.endsWith('/requests')) return sanitized;
+        return `${sanitized}/requests`;
+    }, []);
+
+    const syncRequestsFromApi = useCallback(async () => {
+        for (const candidate of REQUESTS_API_FALLBACKS) {
+            try {
+                const response = await fetch(candidate, { cache: 'no-store' });
+                if (!response.ok) continue;
+                const payload = await response.json();
+                if (!Array.isArray(payload)) continue;
+                const mapped = payload.map(normalizeApiRequest);
+                setCurrentRequests((prev) => {
+                    const next = mergeById(prev, mapped);
+                    persistRequests(next);
+                    return next;
+                });
+                setActiveApiUrl(candidate);
+                return;
+            } catch {
+                // Try next candidate.
+            }
+        }
+        console.error('Failed to sync admin requests from all configured endpoints.');
+    }, []);
+
+    useEffect(() => {
+        syncRequestsFromApi();
+        const interval = setInterval(syncRequestsFromApi, 5000);
+        return () => clearInterval(interval);
+    }, [syncRequestsFromApi]);
+
+    const pushStatusToApi = async (id, status) => {
+        try {
+            await fetch(getStatusEndpoint(activeApiUrl, id), {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status }),
+            });
+        } catch (error) {
+            console.error('Failed to update request status in backend:', error);
+        }
+    };
 
     const showNotification = (message, type = 'success') => {
         setToast({ show: true, message, type });
@@ -38,46 +173,79 @@ export default function RequestsPage() {
         setTimeout(() => setToast({ show: false, message: '', type: 'success' }), 3000);
     };
 
-    const handleApprove = (id) => {
-        setCurrentRequests(prev => prev.map(item =>
+    const updateRequests = (updater) => {
+        setCurrentRequests(prev => {
+            const next = typeof updater === 'function' ? updater(prev) : updater;
+            persistRequests(next);
+            return next;
+        });
+    };
+
+    const handleApprove = async (id) => {
+        updateRequests(prev => prev.map(item =>
             item.id === id ? { ...item, status: 'Approved' } : item
         ));
         if (selectedRequest && selectedRequest.id === id) {
             setSelectedRequest(prev => ({ ...prev, status: 'Approved' }));
         }
+        await pushStatusToApi(id, 'Approved');
         showNotification('Request approved successfully!');
     };
 
-    const handleReject = (id) => {
-        setCurrentRequests(prev => prev.map(item =>
+    const handleReject = async (id) => {
+        updateRequests(prev => prev.map(item =>
             item.id === id ? { ...item, status: 'Rejected' } : item
         ));
         if (selectedRequest && selectedRequest.id === id) {
             setSelectedRequest(prev => ({ ...prev, status: 'Rejected' }));
         }
+        await pushStatusToApi(id, 'Rejected');
         showNotification('Request rejected successfully!', 'error');
     };
 
-    const handleBulkApprove = () => {
-        setCurrentRequests(prev => prev.map(item =>
+    const handleBulkApprove = async () => {
+        updateRequests(prev => prev.map(item =>
             selectedIds.includes(item.id) ? { ...item, status: 'Approved' } : item
         ));
+        await Promise.all(selectedIds.map((id) => pushStatusToApi(id, 'Approved')));
         showNotification(`${selectedIds.length} requests approved successfully!`);
     };
 
-    const handleBulkReject = () => {
-        setCurrentRequests(prev => prev.map(item =>
+    const handleBulkReject = async () => {
+        updateRequests(prev => prev.map(item =>
             selectedIds.includes(item.id) ? { ...item, status: 'Rejected' } : item
         ));
+        await Promise.all(selectedIds.map((id) => pushStatusToApi(id, 'Rejected')));
         showNotification(`${selectedIds.length} requests rejected successfully!`, 'error');
     };
 
-    const toggleSelectAll = () => {
-        if (selectedIds.length === filteredData.length) {
-            setSelectedIds([]);
-        } else {
-            setSelectedIds(filteredData.map(r => r.id));
+    const handleBulkDelete = async () => {
+        const idsToDelete = [...selectedIds];
+        if (idsToDelete.length === 0) return;
+        updateRequests(prev => prev.filter((item) => !idsToDelete.includes(item.id)));
+        if (selectedRequest && idsToDelete.includes(selectedRequest.id)) {
+            setSelectedRequest(null);
         }
+        try {
+            await fetch(getDeleteEndpoint(activeApiUrl), {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids: idsToDelete }),
+            });
+        } catch (error) {
+            console.error('Failed to delete requests in backend:', error);
+        }
+        showNotification(`${idsToDelete.length} requests deleted successfully!`, 'error');
+    };
+
+    const toggleSelectAll = () => {
+        const pageIds = paginatedData.map((r) => r.id);
+        const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selectedIds.includes(id));
+        if (allPageSelected) {
+            setSelectedIds((prev) => prev.filter((id) => !pageIds.includes(id)));
+            return;
+        }
+        setSelectedIds((prev) => Array.from(new Set([...prev, ...pageIds])));
     };
 
     const toggleSelect = (id) => {
@@ -104,21 +272,40 @@ export default function RequestsPage() {
 
     const filteredData = filteredByTab.filter(item => {
         const matchesSearch =
-            item.tool.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            item.requester.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            item.id.toLowerCase().includes(searchTerm.toLowerCase());
+            String(item.tool || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            String(item.requester || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            String(item.id || '').toLowerCase().includes(searchTerm.toLowerCase());
 
         const matchesType = filterType === 'All Types' || item.type === filterType;
         const matchesStatus = filterStatus === 'All Status' || item.status === filterStatus;
         const matchesRisk = filterRisk === 'All Risks' || (item.risk && item.risk === filterRisk);
 
         return matchesSearch && matchesType && matchesStatus && matchesRisk;
-    });
+    }).sort((a, b) => extractRequestNumber(b.id) - extractRequestNumber(a.id));
+
+    const totalPages = Math.max(1, Math.ceil(filteredData.length / ITEMS_PER_PAGE));
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm, activeTab, filterType, filterStatus, filterRisk]);
+
+    useEffect(() => {
+        if (currentPage > totalPages) {
+            setCurrentPage(totalPages);
+        }
+    }, [currentPage, totalPages]);
+
+    const paginatedData = useMemo(() => {
+        const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+        return filteredData.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+    }, [filteredData, currentPage]);
+
+    const pageSelectedCount = paginatedData.filter((row) => selectedIds.includes(row.id)).length;
 
     // Columns Configuration
     const columns = [
         {
-            header: <input type="checkbox" checked={selectedIds.length === filteredData.length && filteredData.length > 0} onChange={toggleSelectAll} className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />,
+            header: <input type="checkbox" checked={pageSelectedCount === paginatedData.length && paginatedData.length > 0} onChange={toggleSelectAll} className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />,
             accessor: 'selection',
             className: 'w-10',
             render: (row) => (
@@ -394,26 +581,80 @@ export default function RequestsPage() {
                         <XSquare className="w-4 h-4 mr-2" />
                         Reject Selected
                     </button>
+                    <button
+                        onClick={handleBulkDelete}
+                        disabled={selectedIds.length === 0}
+                        className={clsx(
+                            "inline-flex items-center px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-sm",
+                            selectedIds.length === 0
+                                ? "bg-gray-200 text-white cursor-not-allowed opacity-80"
+                                : "bg-gray-700 text-white hover:bg-gray-800"
+                        )}
+                    >
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        Delete Selected
+                    </button>
                 </div>
             </div>
 
             {/* Table */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <Table columns={columns} data={filteredData} />
+                <Table columns={columns} data={paginatedData} />
 
                 {/* Pagination */}
                 <div className="bg-white px-6 py-4 flex items-center justify-between border-t border-gray-50">
                     <span className="text-sm font-medium text-gray-400">
-                        Showing 1 to {filteredData.length > 7 ? 7 : filteredData.length} of {filteredData.length} total requests
+                        Showing {filteredData.length === 0 ? 0 : ((currentPage - 1) * ITEMS_PER_PAGE) + 1} to {Math.min(currentPage * ITEMS_PER_PAGE, filteredData.length)} of {filteredData.length} total requests
                     </span>
                     <div className="flex items-center space-x-1">
-                        <button className="px-3 py-1 border border-gray-100 rounded text-gray-400 hover:bg-gray-50 transition-colors">&lt;</button>
-                        <button className="px-3 py-1 bg-blue-600 text-white rounded shadow-sm font-bold">1</button>
-                        <button className="px-3 py-1 border border-gray-100 rounded text-gray-400 hover:bg-gray-50 transition-colors">2</button>
-                        <button className="px-3 py-1 border border-gray-100 rounded text-gray-400 hover:bg-gray-50 transition-colors">3</button>
-                        <span className="px-2 text-gray-300">...</span>
-                        <button className="px-3 py-1 border border-gray-100 rounded text-gray-400 hover:bg-gray-50 transition-colors">12</button>
-                        <button className="px-3 py-1 border border-gray-100 rounded text-gray-400 hover:bg-gray-50 transition-colors">&gt;</button>
+                        <button
+                            onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                            disabled={currentPage === 1}
+                            className={clsx(
+                                "px-3 py-1 border rounded transition-colors",
+                                currentPage === 1
+                                    ? "border-gray-100 text-gray-300 cursor-not-allowed"
+                                    : "border-gray-100 text-gray-500 hover:bg-gray-50"
+                            )}
+                        >
+                            &lt;
+                        </button>
+                        {Array.from({ length: totalPages }, (_, i) => i + 1)
+                            .filter((page) => {
+                                if (totalPages <= 7) return true;
+                                if (page === 1 || page === totalPages) return true;
+                                return Math.abs(page - currentPage) <= 1;
+                            })
+                            .map((page, index, arr) => (
+                                <React.Fragment key={page}>
+                                    {index > 0 && page - arr[index - 1] > 1 && (
+                                        <span className="px-2 text-gray-300">...</span>
+                                    )}
+                                    <button
+                                        onClick={() => setCurrentPage(page)}
+                                        className={clsx(
+                                            "px-3 py-1 rounded shadow-sm font-bold",
+                                            currentPage === page
+                                                ? "bg-blue-600 text-white"
+                                                : "border border-gray-100 text-gray-500 hover:bg-gray-50"
+                                        )}
+                                    >
+                                        {page}
+                                    </button>
+                                </React.Fragment>
+                            ))}
+                        <button
+                            onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                            disabled={currentPage === totalPages}
+                            className={clsx(
+                                "px-3 py-1 border rounded transition-colors",
+                                currentPage === totalPages
+                                    ? "border-gray-100 text-gray-300 cursor-not-allowed"
+                                    : "border-gray-100 text-gray-500 hover:bg-gray-50"
+                            )}
+                        >
+                            &gt;
+                        </button>
                     </div>
                 </div>
             </div>
