@@ -5,6 +5,7 @@ const CSV_PATH = path.join(process.cwd(), "backend", "data", "EPC_Softwarelist.c
 
 let cache = null;
 let cacheLoadedAt = 0;
+let cacheFileMtimeMs = 0;
 let cachePromise = null;
 
 const HEADER_MAP = {
@@ -75,10 +76,12 @@ function normalizeRow(row, index) {
     };
 }
 
-async function loadCatalogFromDisk() {
+async function loadCatalogFromDisk(fileMtimeMs) {
     const csv = await fs.readFile(CSV_PATH, "utf8");
     const lines = csv.split(/\r?\n/).filter((line) => line.trim().length > 0);
-    if (lines.length <= 1) return [];
+    if (lines.length <= 1) {
+        return { items: [], fileMtimeMs };
+    }
 
     const headers = parseCsvLine(lines[0]).map(normalizeHeader);
     const items = [];
@@ -92,17 +95,24 @@ async function loadCatalogFromDisk() {
         items.push(normalizeRow(row, i - 1));
     }
 
-    return items;
+    return { items, fileMtimeMs };
 }
 
 export async function getCatalogData() {
-    if (cache) return { items: cache, loadedAt: cacheLoadedAt };
-    if (!cachePromise) {
-        cachePromise = loadCatalogFromDisk();
+    const stat = await fs.stat(CSV_PATH);
+    const fileMtimeMs = Number(stat.mtimeMs) || 0;
+
+    if (cache && cacheFileMtimeMs === fileMtimeMs) {
+        return { items: cache, loadedAt: cacheLoadedAt };
     }
-    const items = await cachePromise;
-    cache = items;
+
+    if (!cachePromise || cacheFileMtimeMs !== fileMtimeMs) {
+        cachePromise = loadCatalogFromDisk(fileMtimeMs);
+    }
+    const result = await cachePromise;
+    cache = result.items;
     cacheLoadedAt = Date.now();
+    cacheFileMtimeMs = result.fileMtimeMs;
     return { items: cache, loadedAt: cacheLoadedAt };
 }
 
@@ -137,6 +147,7 @@ export async function queryCatalog(params = {}) {
     const { items } = await getCatalogData();
 
     const q = String(params.q || "").trim().toLowerCase();
+    const namePrefix = String(params.namePrefix || "").trim().toLowerCase();
     const category = String(params.category || "").trim().toLowerCase();
     const type = String(params.type || "").trim().toLowerCase();
     const license = String(params.license || "").trim().toLowerCase();
@@ -153,10 +164,12 @@ export async function queryCatalog(params = {}) {
             || contains(item.category, q)
             || contains(item.softwareType, q)
             || contains(item.licenseType, q);
+        const matchesNamePrefix = !namePrefix
+            || String(item.softwareName || "").toLowerCase().startsWith(namePrefix);
         const matchesCategory = !category || String(item.category).toLowerCase() === category;
         const matchesType = !type || String(item.softwareType).toLowerCase() === type;
         const matchesLicense = !license || String(item.licenseType).toLowerCase() === license;
-        return matchesQ && matchesCategory && matchesType && matchesLicense;
+        return matchesQ && matchesNamePrefix && matchesCategory && matchesType && matchesLicense;
     });
 
     filtered.sort((a, b) => {
@@ -180,6 +193,7 @@ export async function queryCatalog(params = {}) {
 export function clearCatalogCache() {
     cache = null;
     cacheLoadedAt = 0;
+    cacheFileMtimeMs = 0;
     cachePromise = null;
 }
 
@@ -187,5 +201,6 @@ export function clearCatalogCache() {
 void getCatalogData().catch(() => {
     cache = null;
     cacheLoadedAt = 0;
+    cacheFileMtimeMs = 0;
     cachePromise = null;
 });

@@ -1,26 +1,163 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Info, ChevronDown, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { addRequestFromFormAndSync } from '@/lib/requestStore';
 
+function deriveRequestType(tool = {}) {
+    const category = String(tool.category || '').toLowerCase();
+    const licenseType = String(tool.licenseType || '').toLowerCase();
+    const treatedAsExistingSoftware = category.includes('approved')
+        || (licenseType && licenseType !== 'unidentified' && licenseType !== '-');
+    return treatedAsExistingSoftware ? 'new_license' : 'new_software';
+}
+
 export default function CreateRequest() {
-    const [requestType, setRequestType] = useState('');
+    const searchParams = useSearchParams();
+    const requestedType = String(searchParams.get('requestType') || '').trim();
+    const requestTypeFromQuery = requestedType === 'new_license' || requestedType === 'new_software'
+        ? requestedType
+        : deriveRequestType({
+            category: searchParams.get('category'),
+            licenseType: searchParams.get('licenseType'),
+        });
+    const initialRequiredLicenses = Number.parseInt(String(searchParams.get('users') || ''), 10);
+
+    const [requestType, setRequestType] = useState(requestTypeFromQuery);
     const [showToast, setShowToast] = useState(false);
     const [error, setError] = useState('');
+    const [toolSuggestions, setToolSuggestions] = useState([]);
+    const [showToolSuggestions, setShowToolSuggestions] = useState(false);
+    const [toolSuggestionLoading, setToolSuggestionLoading] = useState(false);
+    const suggestionTimerRef = useRef(null);
+    const suggestionAbortRef = useRef(null);
     const [formData, setFormData] = useState({
-        toolName: '',
-        useCase: '',
-        vendor: '',
-        requiredLicenses: 1,
+        toolName: String(searchParams.get('toolName') || '').trim(),
+        useCase: String(searchParams.get('useCase') || '').trim(),
+        vendor: String(searchParams.get('vendor') || '').trim(),
+        requiredLicenses: Number.isFinite(initialRequiredLicenses) && initialRequiredLicenses > 0
+            ? initialRequiredLicenses
+            : 1,
         timeline: '',
-        department: '',
+        department: String(searchParams.get('department') || '').trim(),
         businessJustification: '',
     });
 
+    useEffect(() => () => {
+        if (suggestionTimerRef.current) {
+            clearTimeout(suggestionTimerRef.current);
+        }
+        if (suggestionAbortRef.current) {
+            suggestionAbortRef.current.abort();
+        }
+    }, []);
+
+    const fetchToolSuggestions = async (query) => {
+        const trimmed = String(query || '').trim();
+        const normalizedQuery = trimmed.toLowerCase();
+        if (!trimmed) {
+            setToolSuggestions([]);
+            setShowToolSuggestions(false);
+            setToolSuggestionLoading(false);
+            return;
+        }
+
+        if (suggestionAbortRef.current) {
+            suggestionAbortRef.current.abort();
+        }
+
+        const controller = new AbortController();
+        suggestionAbortRef.current = controller;
+        setToolSuggestionLoading(true);
+
+        try {
+            const params = new URLSearchParams({
+                namePrefix: trimmed,
+                sort: 'softwareName',
+                order: 'asc',
+                limit: '12',
+                offset: '0',
+            });
+            const response = await fetch(`/api/software?${params.toString()}`, {
+                signal: controller.signal,
+            });
+            if (!response.ok) {
+                throw new Error(`Request failed with status ${response.status}`);
+            }
+
+            const payload = await response.json();
+            const seen = new Set();
+            const suggestions = (Array.isArray(payload.items) ? payload.items : [])
+                .filter((item) => String(item.softwareName || '').toLowerCase().includes(normalizedQuery))
+                .filter((item) => {
+                    const key = String(item.softwareName || '').toLowerCase();
+                    if (!key || seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                })
+                .map((item) => ({
+                    id: item.id,
+                    softwareName: item.softwareName || '',
+                    manufacturer: item.manufacturer || '',
+                    networkInstallations: item.networkInstallations,
+                    category: item.category || '',
+                    licenseType: item.licenseType || '',
+                }));
+
+            setToolSuggestions(suggestions);
+            setShowToolSuggestions(suggestions.length > 0);
+
+            const exactMatch = suggestions.find(
+                (item) => String(item.softwareName).toLowerCase() === normalizedQuery
+            );
+            if (exactMatch) {
+                applyToolData(exactMatch);
+                setShowToolSuggestions(false);
+            }
+        } catch (fetchError) {
+            if (fetchError.name !== 'AbortError') {
+                setToolSuggestions([]);
+                setShowToolSuggestions(false);
+            }
+        } finally {
+            setToolSuggestionLoading(false);
+        }
+    };
+
+    const queueToolSuggestions = (query) => {
+        if (suggestionTimerRef.current) {
+            clearTimeout(suggestionTimerRef.current);
+        }
+        suggestionTimerRef.current = setTimeout(() => {
+            void fetchToolSuggestions(query);
+        }, 250);
+    };
+
     const handleFieldChange = (field, value) => {
         setFormData((prev) => ({ ...prev, [field]: value }));
+
+        if (field === 'toolName') {
+            queueToolSuggestions(value);
+        }
+    };
+
+    const applyToolData = (tool) => {
+        setFormData((prev) => ({
+            ...prev,
+            toolName: tool.softwareName || prev.toolName,
+            vendor: tool.manufacturer || prev.vendor,
+            requiredLicenses: Number.isFinite(Number(tool.networkInstallations)) && Number(tool.networkInstallations) > 0
+                ? Number(tool.networkInstallations)
+                : prev.requiredLicenses,
+        }));
+        setRequestType(deriveRequestType(tool));
+    };
+
+    const applyToolSuggestion = (suggestion) => {
+        applyToolData(suggestion);
+        setShowToolSuggestions(false);
     };
 
     const handleSubmit = async () => {
@@ -100,13 +237,50 @@ export default function CreateRequest() {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-2.5">
                                 <label className="block text-gray-500 text-xs font-semibold uppercase tracking-wider">Tool Name <span className="text-red-500">*</span></label>
-                                <input
-                                    type="text"
-                                    value={formData.toolName}
-                                    onChange={(e) => handleFieldChange('toolName', e.target.value)}
-                                    placeholder="e.g. Notion"
-                                    className="w-full bg-gray-50/30 border border-gray-100 rounded-xl px-4 py-3 text-gray-900 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all"
-                                />
+                                <div className="relative">
+                                    <input
+                                        type="text"
+                                        value={formData.toolName}
+                                        onChange={(e) => handleFieldChange('toolName', e.target.value)}
+                                        onFocus={() => {
+                                            if (toolSuggestions.length > 0) {
+                                                setShowToolSuggestions(true);
+                                            }
+                                        }}
+                                        onBlur={() => {
+                                            setTimeout(() => setShowToolSuggestions(false), 120);
+                                        }}
+                                        placeholder="e.g. Notion"
+                                        className="w-full bg-gray-50/30 border border-gray-100 rounded-xl px-4 py-3 text-gray-900 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all"
+                                    />
+                                    {(showToolSuggestions || toolSuggestionLoading) && (
+                                        <div className="absolute z-20 mt-1 w-full rounded-xl border border-gray-200 bg-white shadow-lg overflow-hidden">
+                                            {toolSuggestionLoading && (
+                                                <p className="px-4 py-3 text-sm text-gray-500">Searching tools...</p>
+                                            )}
+                                            {!toolSuggestionLoading && toolSuggestions.length === 0 && (
+                                                <p className="px-4 py-3 text-sm text-gray-500">No matching tools found.</p>
+                                            )}
+                                            {!toolSuggestionLoading && toolSuggestions.length > 0 && (
+                                                <ul className="max-h-60 overflow-auto">
+                                                    {toolSuggestions.map((item) => (
+                                                        <li key={item.id}>
+                                                            <button
+                                                                type="button"
+                                                                onMouseDown={(e) => e.preventDefault()}
+                                                                onClick={() => applyToolSuggestion(item)}
+                                                                className="w-full text-left px-4 py-2.5 hover:bg-gray-50"
+                                                            >
+                                                                <p className="text-sm font-semibold text-gray-900">{item.softwareName}</p>
+                                                                <p className="text-xs text-gray-500">{item.manufacturer || 'Unknown vendor'}</p>
+                                                            </button>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                             <div className="space-y-2.5">
                                 <label className="block text-gray-500 text-xs font-semibold uppercase tracking-wider">Vendor <span className="text-red-500">*</span></label>

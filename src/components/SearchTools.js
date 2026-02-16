@@ -74,12 +74,23 @@ export default function SearchTools() {
 
     const totalPages = Math.max(Math.ceil(total / limit), 1);
 
-    const buildLicenseRequestLink = (tool) => {
+    const getRequestType = (tool) => {
+        const category = String(tool.category || "").toLowerCase();
+        const licenseType = String(tool.licenseType || "").toLowerCase();
+        const treatedAsExistingSoftware = category.includes("approved")
+            || (licenseType && licenseType !== "unidentified" && licenseType !== "-");
+        return treatedAsExistingSoftware ? "new_license" : "new_software";
+    };
+
+    const buildRequestLink = (tool) => {
         const params = new URLSearchParams({
-            requestType: "new_license",
+            requestType: getRequestType(tool),
             toolId: tool.id,
             toolName: tool.softwareName,
+            vendor: tool.manufacturer || "",
             category: tool.category,
+            licenseType: tool.licenseType || "",
+            softwareType: tool.softwareType || "",
             users: String(tool.networkInstallations ?? 1),
         });
         return `/user/request-new?${params.toString()}`;
@@ -266,7 +277,7 @@ export default function SearchTools() {
                             {!loading && !error && rows.map((tool) => (
                                 <tr key={tool.id} className="hover:bg-gray-50/60">
                                     <td className="px-4 py-3 text-sm font-semibold text-gray-900">
-                                        <Link href={buildLicenseRequestLink(tool)} className="hover:text-blue-700 hover:underline">
+                                        <Link href={buildRequestLink(tool)} className="hover:text-blue-700 hover:underline">
                                             {tool.softwareName}
                                         </Link>
                                     </td>

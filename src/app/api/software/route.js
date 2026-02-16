@@ -13,6 +13,7 @@ export async function GET(request) {
         const { searchParams } = new URL(request.url);
         const data = await queryCatalog({
             q: withDefault(searchParams.get("q"), ""),
+            namePrefix: withDefault(searchParams.get("namePrefix"), ""),
             category: withDefault(searchParams.get("category"), ""),
             type: withDefault(searchParams.get("type"), ""),
             license: withDefault(searchParams.get("license"), ""),
