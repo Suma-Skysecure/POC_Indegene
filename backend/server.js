@@ -128,17 +128,20 @@ const hasKeywordMatch = (requestTool = "", catalogItem = {}) => {
   const requestKeywords = toKeywordSet(requestNormalized);
   if (requestKeywords.size === 0) return false;
 
+  let overlapCount = 0;
   for (const keyword of requestKeywords) {
-    if (catalogItem.softwareKeywords.has(keyword)) return true;
+    if (catalogItem.softwareKeywords.has(keyword)) overlapCount += 1;
   }
-  return false;
+
+  // Single-word requests like "zoom" can match on one keyword.
+  if (requestKeywords.size <= 1) return overlapCount >= 1;
+  // Multi-word requests should have stronger overlap to avoid false matches
+  // (e.g. "Windows ..." accidentally matching "CrowdStrike Windows Sensor").
+  return overlapCount >= 2;
 };
 
 const findMatchingCatalogSoftware = (requestTool = "", catalogItems = []) => {
-  for (const item of catalogItems) {
-    if (hasKeywordMatch(requestTool, item)) return item;
-  }
-  return null;
+  return catalogItems.filter((item) => hasKeywordMatch(requestTool, item));
 };
 
 const isLicenseRequest = (requestType = "", mappedType = "") => {
@@ -165,14 +168,15 @@ const shouldAutoApproveRequest = async (requestBody = {}) => {
 
   const catalogItems = await loadCatalog();
   const matchedSoftware = findMatchingCatalogSoftware(requestTool, catalogItems);
-  if (!matchedSoftware) return false;
+  if (matchedSoftware.length === 0) return false;
 
-  const isApprovedCategory =
-    String(matchedSoftware.category).trim().toLowerCase() === "approved softwares";
-  const isIdentifiedLicense =
-    String(matchedSoftware.licenseType).trim().toLowerCase() !== "unidentified";
-
-  return isApprovedCategory && isIdentifiedLicense;
+  return matchedSoftware.some((item) => {
+    const isApprovedCategory =
+      String(item.category).trim().toLowerCase() === "approved softwares";
+    const isIdentifiedLicense =
+      String(item.licenseType).trim().toLowerCase() !== "unidentified";
+    return isApprovedCategory && isIdentifiedLicense;
+  });
 };
 
 const normalizeIncomingRequest = (body = {}) => {
