@@ -50,8 +50,10 @@ export default function RequestDetailsSidebar({ isOpen, onClose, request, onAppr
                             {request.requester.split(' ').map(n => n[0]).join('')}
                         </div>
                         <div>
-                            <h3 className="font-bold text-gray-900 text-lg">{request.requester}</h3>
+                            <h3 className="font-bold text-gray-900 text-lg">{request.userName || request.requester}</h3>
                             <p className="text-sm text-gray-500 font-medium">{request.role || 'Lead Data Scientist'} • {request.department}</p>
+                            <p className="text-xs text-gray-500">User Name: {request.userName || request.requester || '-'}</p>
+                            <p className="text-xs text-gray-500">User Email: {request.userEmail || request.formPayload?.userEmail || '-'}</p>
                         </div>
                     </div>
 

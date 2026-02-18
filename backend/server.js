@@ -3,6 +3,17 @@ const cors = require("cors");
 const fs = require("fs");
 const path = require("path");
 const csv = require("csv-parser");
+const dotenv = require("dotenv");
+
+dotenv.config({ path: path.join(__dirname, ".env") });
+
+const fetchImpl = (() => {
+  if (typeof globalThis.fetch === "function") return globalThis.fetch.bind(globalThis);
+  // Node < 18 fallback
+  // eslint-disable-next-line global-require
+  const nodeFetch = require("node-fetch");
+  return (nodeFetch.default || nodeFetch);
+})();
 
 const app = express();
 app.use(cors());
@@ -16,6 +27,10 @@ let catalogLoadPromise = null;
 
 const DEFAULT_REQUEST_ID_BASE = 8904;
 const MAX_REASONABLE_REQUEST_ID = 999999;
+const GRAPH_SCOPE = "https://graph.microsoft.com/.default";
+const GRAPH_NOTIFICATION_TOPIC_WEB_URL =
+  process.env.GRAPH_NOTIFICATION_TOPIC_WEB_URL || "https://teams.microsoft.com/l/app/7c104dc6-7f99-4dd3-9d85-9474977f2d1f";
+const EMAIL_UPN_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const extractRequestNumber = (value = "") => {
   const match = String(value).match(/(\d+)/);
@@ -47,6 +62,16 @@ const mapRequestType = (requestType = "") => {
   if (value.includes("new software request")) return "New";
   if (value.includes("reuse")) return "Reuse";
   return "New";
+};
+
+const formatUserNameFromEmail = (value = "") => {
+  const localPart = String(value).split("@")[0] || "";
+  if (!localPart) return "";
+  return localPart
+    .replace(/[._-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 };
 
 const normalizeText = (value = "") =>
@@ -182,10 +207,18 @@ const shouldAutoApproveRequest = async (requestBody = {}) => {
 const normalizeIncomingRequest = (body = {}) => {
   const createdAt = body.createdAt ? new Date(body.createdAt) : new Date();
   const mappedType = body.type || mapRequestType(body.requestType);
+  const userEmail = body.userEmail || body.email || body.formPayload?.userEmail || "";
+  const rawUserName = body.userName || body.requester || body.formPayload?.userName || "";
+  const userName =
+    rawUserName && !String(rawUserName).includes("@")
+      ? String(rawUserName).trim()
+      : formatUserNameFromEmail(userEmail || rawUserName);
   return {
     id: formatRequestId(body.id),
     tool: body.tool || body.toolName || "Unknown Tool",
-    requester: body.requester || body.userEmail || "Unknown User",
+    requester: userName || userEmail || "Unknown User",
+    userName,
+    userEmail,
     department: body.department || "General",
     status: body.status || "Pending",
     type: mappedType,
@@ -211,7 +244,8 @@ const normalizeIncomingRequest = (body = {}) => {
       timeline: body.timeline || "",
       department: body.department || "",
       businessJustification: body.businessJustification || body.justification || "",
-      userEmail: body.userEmail || body.requester || "",
+      userName,
+      userEmail,
     },
   };
 };
@@ -230,6 +264,152 @@ const addRequestHandler = async (req, res) => {
 
   res.status(200).json({ message: "Request saved successfully", request: newRequest });
 };
+
+const isValidUserUpn = (value = "") => EMAIL_UPN_REGEX.test(String(value).trim());
+
+const getGraphAccessToken = async () => {
+  const tenantId = process.env.AZURE_TENANT_ID;
+  const clientId = process.env.AZURE_CLIENT_ID;
+  const clientSecret = process.env.AZURE_CLIENT_SECRET;
+
+  if (!tenantId || !clientId || !clientSecret) {
+    throw new Error(
+      "Missing Azure Graph credentials. Set AZURE_TENANT_ID, AZURE_CLIENT_ID, and AZURE_CLIENT_SECRET."
+    );
+  }
+
+  const tokenEndpoint = `https://login.microsoftonline.com/${encodeURIComponent(
+    tenantId
+  )}/oauth2/v2.0/token`;
+
+  const response = await fetchImpl(tokenEndpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      scope: GRAPH_SCOPE,
+      grant_type: "client_credentials",
+    }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Token error: ${response.status} ${text}`);
+  }
+
+  const tokenPayload = await response.json();
+  if (!tokenPayload.access_token) {
+    throw new Error("Token response missing access_token");
+  }
+  return tokenPayload.access_token;
+};
+
+async function sendTeamsActivityNotification(accessToken, userUpn, message) {
+  const url = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(
+    userUpn
+  )}/teamwork/sendActivityNotification`;
+
+  const DEFAULT_TEAMS_DEEPLINK =
+    "https://teams.microsoft.com/l/app/7c104dc6-7f99-4dd3-9d85-9474977f2d1f";
+  const rawTopicWebUrl = String(GRAPH_NOTIFICATION_TOPIC_WEB_URL || "");
+  const sanitizedTopicWebUrl = rawTopicWebUrl.trim().replace(/^['"]|['"]$/g, "");
+  const topicWebUrl = sanitizedTopicWebUrl.startsWith("https://teams.microsoft.com/l/")
+    ? sanitizedTopicWebUrl
+    : DEFAULT_TEAMS_DEEPLINK;
+
+  const payload = {
+    topic: {
+      source: "text",
+      value: "License Request",
+      webUrl: topicWebUrl,
+    },
+    activityType: "systemDefault",
+    previewText: {
+      content: "License request update",
+    },
+    templateParameters: [{ name: "systemDefaultText", value: message }],
+  };
+
+  console.log("GRAPH_NOTIFICATION_TOPIC_WEB_URL =", JSON.stringify(GRAPH_NOTIFICATION_TOPIC_WEB_URL));
+  console.log("Topic webUrl being sent =", JSON.stringify(payload.topic.webUrl));
+
+  const response = await fetchImpl(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (response.status !== 204) {
+    const text = await response.text();
+    console.error(`Graph notification error ${response.status}: ${text}`);
+    throw new Error(`Graph error: ${response.status} ${text}`);
+  }
+}
+
+const updateRequestStatus = (requestId, status) => {
+  const index = requests.findIndex((item) => String(item.id) === String(requestId));
+  if (index === -1) return null;
+  requests[index] = { ...requests[index], status };
+  return requests[index];
+};
+
+const handleApproveReject = (status) => async (req, res) => {
+  try {
+    const { requestId, userEmail, userUpn } = req.body || {};
+    if (!requestId) return res.status(400).json({ error: "requestId is required" });
+
+    const updatedRequest = updateRequestStatus(requestId, status);
+    if (!updatedRequest) return res.status(404).json({ error: "Request not found" });
+
+    const candidateUpn =
+      userUpn ||
+      userEmail ||
+      updatedRequest.userEmail ||
+      updatedRequest.formPayload?.userEmail ||
+      "";
+    if (!isValidUserUpn(candidateUpn)) {
+      return res.status(400).json({ error: "Valid userEmail/UPN is required for notification" });
+    }
+
+    const requestType =
+      updatedRequest.formPayload?.requestType ||
+      updatedRequest.requestOverview?.type ||
+      updatedRequest.type ||
+      "request";
+    const tool = updatedRequest.tool || updatedRequest.requestOverview?.tool || "tool";
+    const action = String(status).toLowerCase() === "approved" ? "approved" : "rejected";
+    const message = `Your ${requestType} for ${tool} has been ${action}`;
+
+    console.log(`[notify] requestId=${requestId} userUpn=${candidateUpn}`);
+    const accessToken = await getGraphAccessToken();
+    await sendTeamsActivityNotification(accessToken, candidateUpn, message);
+
+    res.json({ success: true, request: updatedRequest });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+app.get("/test-notify", async (req, res) => {
+  try {
+    const userUpn = String(req.query.userUpn || "").trim();
+    if (!isValidUserUpn(userUpn)) {
+      return res.status(400).json({ ok: false, error: "userUpn query param must be a valid email/UPN" });
+    }
+    const accessToken = await getGraphAccessToken();
+    await sendTeamsActivityNotification(accessToken, userUpn, "Test notification from backend");
+    return res.json({ ok: true });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
 
 // Receive request from Copilot/agent
 app.post("/api/requests", addRequestHandler);
@@ -276,6 +456,23 @@ const deleteRequestsHandler = (req, res) => {
 
 app.delete("/requests", deleteRequestsHandler);
 app.delete("/api/requests", deleteRequestsHandler);
+
+app.post(
+  "/approve",
+  handleApproveReject("Approved")
+);
+app.post(
+  "/reject",
+  handleApproveReject("Rejected")
+);
+app.post(
+  "/api/approve",
+  handleApproveReject("Approved")
+);
+app.post(
+  "/api/reject",
+  handleApproveReject("Rejected")
+);
 
 app.listen(5000, () => {
   console.log("Backend running on http://localhost:5000");

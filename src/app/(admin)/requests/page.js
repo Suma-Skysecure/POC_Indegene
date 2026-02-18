@@ -36,13 +36,30 @@ const extractRequestNumber = (id = '') => {
     return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
 };
 
+const formatUserNameFromEmail = (value = '') => {
+    const localPart = String(value).split('@')[0] || '';
+    if (!localPart) return '';
+    return localPart
+        .replace(/[._-]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+};
+
 const normalizeApiRequest = (item = {}) => {
     const type = item.type || mapRequestType(item.requestType);
     const id = String(item.id || '').trim();
+    const userEmail = item.userEmail || item.formPayload?.userEmail || '';
+    const rawUserName = item.userName || item.requester || item.formPayload?.userName || '';
+    const userName = rawUserName && !String(rawUserName).includes('@')
+        ? String(rawUserName)
+        : (formatUserNameFromEmail(userEmail || rawUserName) || '');
     return {
         id: id.startsWith('#REQ-') ? id : `#REQ-${id.replace(/\D/g, '') || Date.now()}`,
         tool: item.tool || item.toolName || 'Unknown Tool',
-        requester: item.requester || item.userEmail || 'Unknown User',
+        requester: userName || 'Unknown User',
+        userName,
+        userEmail,
         department: item.department || 'General',
         date: item.date || formatDisplayDate(item.createdAt),
         status: item.status || 'Pending',
@@ -68,7 +85,8 @@ const normalizeApiRequest = (item = {}) => {
             timeline: item.timeline || '',
             department: item.department || '',
             businessJustification: item.businessJustification || item.justification || '',
-            userEmail: item.userEmail || item.requester || '',
+            userName: userName || '',
+            userEmail: userEmail || '',
         },
     };
 };
@@ -127,6 +145,17 @@ export default function RequestsPage() {
         return `${sanitized}/requests`;
     }, []);
 
+    const getDecisionEndpoint = useCallback((baseUrl, action) => {
+        const sanitized = String(baseUrl || '').replace(/\/+$/, '');
+        if (sanitized.endsWith('/api/requests')) {
+            return `${sanitized.slice(0, -('/requests'.length))}/${action}`;
+        }
+        if (sanitized.endsWith('/requests')) {
+            return `${sanitized.slice(0, -('/requests'.length))}/${action}`;
+        }
+        return `${sanitized}/${action}`;
+    }, []);
+
     const syncRequestsFromApi = useCallback(async () => {
         for (const candidate of REQUESTS_API_FALLBACKS) {
             try {
@@ -167,6 +196,24 @@ export default function RequestsPage() {
         }
     };
 
+    const pushDecisionToApi = async (id, action, userEmail) => {
+        const response = await fetch(getDecisionEndpoint(activeApiUrl, action), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ requestId: id, userEmail, userUpn: userEmail }),
+        });
+        if (!response.ok) {
+            let message = `Failed to ${action} request`;
+            try {
+                const payload = await response.json();
+                if (payload?.error) message = payload.error;
+            } catch {
+                // Ignore non-JSON errors and keep fallback message.
+            }
+            throw new Error(message);
+        }
+    };
+
     const showNotification = (message, type = 'success') => {
         setToast({ show: true, message, type });
         setSelectedIds([]); // Clear selection on action
@@ -182,24 +229,38 @@ export default function RequestsPage() {
     };
 
     const handleApprove = async (id) => {
+        const target = currentRequests.find((item) => item.id === id);
+        const userEmail = target?.userEmail || target?.formPayload?.userEmail || '';
         updateRequests(prev => prev.map(item =>
             item.id === id ? { ...item, status: 'Approved' } : item
         ));
         if (selectedRequest && selectedRequest.id === id) {
             setSelectedRequest(prev => ({ ...prev, status: 'Approved' }));
         }
-        await pushStatusToApi(id, 'Approved');
+        try {
+            await pushDecisionToApi(id, 'approve', userEmail);
+        } catch (error) {
+            console.error('Failed to call approve endpoint, falling back to status update:', error);
+            await pushStatusToApi(id, 'Approved');
+        }
         showNotification('Request approved successfully!');
     };
 
     const handleReject = async (id) => {
+        const target = currentRequests.find((item) => item.id === id);
+        const userEmail = target?.userEmail || target?.formPayload?.userEmail || '';
         updateRequests(prev => prev.map(item =>
             item.id === id ? { ...item, status: 'Rejected' } : item
         ));
         if (selectedRequest && selectedRequest.id === id) {
             setSelectedRequest(prev => ({ ...prev, status: 'Rejected' }));
         }
-        await pushStatusToApi(id, 'Rejected');
+        try {
+            await pushDecisionToApi(id, 'reject', userEmail);
+        } catch (error) {
+            console.error('Failed to call reject endpoint, falling back to status update:', error);
+            await pushStatusToApi(id, 'Rejected');
+        }
         showNotification('Request rejected successfully!', 'error');
     };
 
@@ -207,7 +268,16 @@ export default function RequestsPage() {
         updateRequests(prev => prev.map(item =>
             selectedIds.includes(item.id) ? { ...item, status: 'Approved' } : item
         ));
-        await Promise.all(selectedIds.map((id) => pushStatusToApi(id, 'Approved')));
+        await Promise.all(selectedIds.map(async (id) => {
+            const target = currentRequests.find((item) => item.id === id);
+            const userEmail = target?.userEmail || target?.formPayload?.userEmail || '';
+            try {
+                await pushDecisionToApi(id, 'approve', userEmail);
+            } catch (error) {
+                console.error('Failed to call approve endpoint, falling back to status update:', error);
+                await pushStatusToApi(id, 'Approved');
+            }
+        }));
         showNotification(`${selectedIds.length} requests approved successfully!`);
     };
 
@@ -215,7 +285,16 @@ export default function RequestsPage() {
         updateRequests(prev => prev.map(item =>
             selectedIds.includes(item.id) ? { ...item, status: 'Rejected' } : item
         ));
-        await Promise.all(selectedIds.map((id) => pushStatusToApi(id, 'Rejected')));
+        await Promise.all(selectedIds.map(async (id) => {
+            const target = currentRequests.find((item) => item.id === id);
+            const userEmail = target?.userEmail || target?.formPayload?.userEmail || '';
+            try {
+                await pushDecisionToApi(id, 'reject', userEmail);
+            } catch (error) {
+                console.error('Failed to call reject endpoint, falling back to status update:', error);
+                await pushStatusToApi(id, 'Rejected');
+            }
+        }));
         showNotification(`${selectedIds.length} requests rejected successfully!`, 'error');
     };
 

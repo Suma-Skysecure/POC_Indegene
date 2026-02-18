@@ -32,6 +32,16 @@ const formatTimeline = (timeline) => {
     return timeline || 'TBD';
 };
 
+const formatUserNameFromEmail = (value = '') => {
+    const localPart = String(value).split('@')[0] || '';
+    if (!localPart) return '';
+    return localPart
+        .replace(/[._-]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+};
+
 export const formatRequestDate = (date = new Date()) =>
     date.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
 
@@ -68,6 +78,8 @@ export const addRequestFromForm = ({ requestType, formData }) => {
     const nextId = getNextRequestId(current);
     const now = new Date();
     const requester = getCurrentUser();
+    const userEmail = formData.userEmail || requester;
+    const userName = formData.userName || formatUserNameFromEmail(userEmail) || requester;
     const mappedType = requestType === 'new_license' ? 'Reuse' : 'New';
     const licenses = Number(formData.requiredLicenses || 0);
     const timeline = formatTimeline(formData.timeline);
@@ -75,7 +87,9 @@ export const addRequestFromForm = ({ requestType, formData }) => {
     const newRequest = {
         id: nextId,
         tool: formData.toolName,
-        requester,
+        requester: userName,
+        userName,
+        userEmail,
         department: formData.department,
         date: formatRequestDate(now),
         status: 'Pending',
@@ -106,6 +120,8 @@ export const addRequestFromForm = ({ requestType, formData }) => {
             businessJustification: formData.businessJustification,
             numberOfUsers: licenses,
             urgency: formData.timeline,
+            userName,
+            userEmail,
         },
     };
 
@@ -117,10 +133,17 @@ export const addRequestFromForm = ({ requestType, formData }) => {
 const normalizeApiRequest = (item = {}) => {
     const mappedType = item.type || mapRequestType(item.requestType);
     const id = String(item.id || '').trim();
+    const userEmail = item.userEmail || item.formPayload?.userEmail || '';
+    const rawUserName = item.userName || item.requester || item.formPayload?.userName || '';
+    const userName = rawUserName && !String(rawUserName).includes('@')
+        ? String(rawUserName)
+        : (formatUserNameFromEmail(userEmail || rawUserName) || '');
     return {
         id: id.startsWith('#REQ-') ? id : `#REQ-${id.replace(/\D/g, '') || Date.now()}`,
         tool: item.tool || item.toolName || 'Unknown Tool',
-        requester: item.requester || item.userEmail || 'Unknown User',
+        requester: userName || 'Unknown User',
+        userName,
+        userEmail,
         department: item.department || 'General',
         date: item.date || formatRequestDate(item.createdAt ? new Date(item.createdAt) : new Date()),
         status: item.status || 'Pending',
@@ -146,7 +169,8 @@ const normalizeApiRequest = (item = {}) => {
             timeline: item.timeline || '',
             department: item.department || '',
             businessJustification: item.businessJustification || item.justification || '',
-            userEmail: item.userEmail || item.requester || '',
+            userName: userName || '',
+            userEmail: userEmail || item.requester || '',
         },
     };
 };
@@ -194,7 +218,8 @@ export const addRequestFromFormAndSync = async ({ requestType, formData }) => {
         toolName: formData.toolName,
         requestType: requestType === 'new_license' ? 'License Request' : 'New Software Request',
         requester: localRequest.requester,
-        userEmail: localRequest.requester,
+        userName: localRequest.userName || localRequest.requester,
+        userEmail: localRequest.userEmail || localRequest.requester,
         department: formData.department,
         requiredLicenses: Number(formData.requiredLicenses || 0),
         numberOfUsers: Number(formData.requiredLicenses || 0),
