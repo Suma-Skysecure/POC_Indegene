@@ -80,8 +80,14 @@ export default function MyRequests() {
 
     useEffect(() => {
         const currentUser = getCurrentUser();
+        const isOwnedByCurrentUser = (req) => {
+            const ownerEmail = String(req.userEmail || req.formPayload?.userEmail || '').toLowerCase();
+            const current = String(currentUser || '').toLowerCase();
+            if (ownerEmail) return ownerEmail === current;
+            return String(req.requester || '').toLowerCase() === current;
+        };
         const storeRequests = loadRequests()
-            .filter((req) => req.requester === currentUser)
+            .filter(isOwnedByCurrentUser)
             .map(mapStoreRequestToMyRequest);
 
         const legacyRequests = requestsData

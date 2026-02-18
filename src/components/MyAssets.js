@@ -151,8 +151,14 @@ export default function MyAssets() {
 
     useEffect(() => {
         const currentUser = getCurrentUser();
+        const isOwnedByCurrentUser = (req) => {
+            const ownerEmail = String(req.userEmail || req.formPayload?.userEmail || '').toLowerCase();
+            const current = String(currentUser || '').toLowerCase();
+            if (ownerEmail) return ownerEmail === current;
+            return String(req.requester || '').toLowerCase() === current;
+        };
         const storeRequestAssets = loadRequests()
-            .filter((req) => req.requester === currentUser)
+            .filter(isOwnedByCurrentUser)
             .filter((req) => String(req.status || "").toUpperCase() === "APPROVED")
             .map(mapStoreRequestToAsset);
 
@@ -191,9 +197,7 @@ export default function MyAssets() {
         });
 
         const sorted = [...list];
-        // Keep approved requests first, then existing licenses.
         sorted.sort((a, b) => {
-            if (a.source !== b.source) return a.source === "request" ? -1 : 1;
             const delta = parseDateValue(a.dateSubmitted) - parseDateValue(b.dateSubmitted);
             return sortBy === "oldest" ? delta : -delta;
         });

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { LayoutGrid } from 'lucide-react';
 
 const StatusBadge = ({ status }) => {
@@ -17,6 +17,65 @@ const StatusBadge = ({ status }) => {
 };
 
 export default function RequestsTable({ requests }) {
+    const normalizeDomain = (value = '') => {
+        const raw = String(value || '').trim().toLowerCase();
+        if (!raw) return '';
+        const noProtocol = raw
+            .replace(/^https?:\/\//, '')
+            .replace(/^www\./, '')
+            .split('/')[0]
+            .split('?')[0]
+            .split('#')[0];
+        if (noProtocol.includes('@')) {
+            return noProtocol.split('@')[1] || '';
+        }
+        if (noProtocol.includes('.')) {
+            return noProtocol.replace(/[^a-z0-9.-]/g, '');
+        }
+        const token = noProtocol.replace(/[^a-z0-9]/g, '');
+        return token ? `${token}.com` : '';
+    };
+
+    const getLogoCandidates = (req = {}) => {
+        const vendorDomain = normalizeDomain(req.vendor || req.category || '');
+        const toolDomain = normalizeDomain(req.toolName || '');
+        const domains = [req.logoDomain, vendorDomain, toolDomain]
+            .map((domain) => normalizeDomain(domain))
+            .filter(Boolean);
+        const uniqueDomains = [...new Set(domains)];
+
+        const candidates = [req.toolIcon, req.logoUrl].filter(Boolean);
+        uniqueDomains.forEach((domain) => {
+            candidates.push(`/api/logo?domain=${encodeURIComponent(domain)}`);
+            candidates.push(`https://logo.clearbit.com/${domain}`);
+            candidates.push(`https://unavatar.io/${domain}`);
+            candidates.push(`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`);
+        });
+
+        return [...new Set(candidates.filter(Boolean))];
+    };
+
+    const ToolLogo = ({ req }) => {
+        const [logoAttempt, setLogoAttempt] = useState(0);
+        const logoCandidates = useMemo(() => getLogoCandidates(req), [req]);
+        const logoSrc = logoCandidates[logoAttempt] || '';
+
+        if (!logoSrc) {
+            return <LayoutGrid className="h-full w-full text-gray-300" />;
+        }
+
+        return (
+            <img
+                key={`${req.id}-${logoAttempt}`}
+                src={logoSrc}
+                alt={req.toolName}
+                className="h-full w-full object-contain"
+                loading="lazy"
+                onError={() => setLogoAttempt((value) => value + 1)}
+            />
+        );
+    };
+
     return (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="overflow-x-auto">
@@ -45,11 +104,7 @@ export default function RequestsTable({ requests }) {
                                 <td className="px-8 py-6">
                                     <div className="flex items-center gap-4">
                                         <div className="h-10 w-10 bg-gray-50 rounded-lg p-2 border border-gray-100 group-hover:border-blue-100 group-hover:bg-white transition-all">
-                                            {req.toolIcon ? (
-                                                <img src={req.toolIcon} alt={req.toolName} className="h-full w-full object-contain" />
-                                            ) : (
-                                                <LayoutGrid className="h-full w-full text-gray-300" />
-                                            )}
+                                            <ToolLogo req={req} />
                                         </div>
                                         <span className="font-bold text-gray-900 text-sm">{req.toolName}</span>
                                     </div>

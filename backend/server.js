@@ -166,21 +166,17 @@ const hasKeywordMatch = (requestTool = "", catalogItem = {}) => {
 };
 
 const findMatchingCatalogSoftware = (requestTool = "", catalogItems = []) => {
-  return catalogItems.filter((item) => hasKeywordMatch(requestTool, item));
-};
-
-const isLicenseRequest = (requestType = "", mappedType = "") => {
-  const normalized = String(requestType).trim().toLowerCase();
-  if (normalized === "license request") return true;
-  // Keep compatibility with existing request form value.
-  if (normalized === "new_license") return true;
-  return String(mappedType).toLowerCase() === "reuse";
+  const normalizedRequestTool = normalizeText(requestTool);
+  if (!normalizedRequestTool) return [];
+  // Strict existence check in master catalog by normalized software name.
+  return catalogItems.filter(
+    (item) => normalizeText(item.softwareName) === normalizedRequestTool
+  );
 };
 
 const shouldAutoApproveRequest = async (requestBody = {}) => {
   const requestTool = requestBody.tool || requestBody.toolName || "";
   const requestType = requestBody.requestType || "";
-  const mappedType = requestBody.type || mapRequestType(requestType);
   const requiredLicenses = Number(
     requestBody.requiredLicenses
       ?? requestBody.numberOfUsers
@@ -188,16 +184,21 @@ const shouldAutoApproveRequest = async (requestBody = {}) => {
       ?? 0
   );
 
-  if (!isLicenseRequest(requestType, mappedType)) return false;
+  // 1) requestType must be exactly "License Request" (case-insensitive).
+  if (String(requestType).trim().toLowerCase() !== "license request") return false;
+  // 5) requiredLicenses <= 5.
   if (!Number.isFinite(requiredLicenses) || requiredLicenses > 5) return false;
 
   const catalogItems = await loadCatalog();
+  // 2) software must exist in catalog master list.
   const matchedSoftware = findMatchingCatalogSoftware(requestTool, catalogItems);
   if (matchedSoftware.length === 0) return false;
 
   return matchedSoftware.some((item) => {
+    // 3) category === "Approved Softwares"
     const isApprovedCategory =
       String(item.category).trim().toLowerCase() === "approved softwares";
+    // 4) licenseType !== "Unidentified"
     const isIdentifiedLicense =
       String(item.licenseType).trim().toLowerCase() !== "unidentified";
     return isApprovedCategory && isIdentifiedLicense;
