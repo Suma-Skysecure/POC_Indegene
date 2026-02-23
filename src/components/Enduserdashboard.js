@@ -106,8 +106,6 @@ function RecommendedToolCard({ item }) {
                 </div>
 
                 <div className="space-y-1.5 text-xs text-[#334155] pt-2">
-                    <div className="flex justify-between"><span>Network ID:</span><span className="font-bold text-[#0F172A]">{item.networkInstallations}</span></div>
-                    <div className="flex justify-between"><span>Managed ID:</span><span className="font-bold text-[#0F172A]">{item.managedInstallations}</span></div>
                     <div className="flex justify-between"><span>Type:</span><span className="font-bold text-[#0F172A]">{item.softwareType}</span></div>
                 </div>
             </div>

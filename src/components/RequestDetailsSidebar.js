@@ -1,12 +1,67 @@
 "use client";
 
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { X, CheckCircle, RotateCcw, AlertTriangle, Shield, ExternalLink, FileText, Briefcase, Users, Layout, Clock, FileStack, Search } from 'lucide-react';
 import Image from 'next/image';
 import clsx from 'clsx';
 
 export default function RequestDetailsSidebar({ isOpen, onClose, request, onApprove, onReject, showActions = true }) {
     if (!isOpen || !request) return null;
+
+    const [licenseStats, setLicenseStats] = useState({ total: 0, used: 0, available: 0, loading: true });
+
+    const requestedTool = useMemo(
+        () => String(request.requestOverview?.tool || request.tool || '').trim(),
+        [request.requestOverview?.tool, request.tool]
+    );
+
+    useEffect(() => {
+        const controller = new AbortController();
+        const loadStats = async () => {
+            try {
+                setLicenseStats((prev) => ({ ...prev, loading: true }));
+                if (!requestedTool) {
+                    setLicenseStats({ total: 0, used: 0, available: 0, loading: false });
+                    return;
+                }
+                const params = new URLSearchParams({
+                    q: requestedTool,
+                    sort: 'rowIndex',
+                    order: 'asc',
+                    limit: '100',
+                    offset: '0',
+                });
+                const response = await fetch(`/api/software?${params.toString()}`, {
+                    signal: controller.signal,
+                    cache: 'no-store',
+                });
+                if (!response.ok) throw new Error(`Request failed with status ${response.status}`);
+                const payload = await response.json();
+                const items = Array.isArray(payload.items) ? payload.items : [];
+                const exact = items.find(
+                    (item) => String(item.softwareName || '').trim().toLowerCase() === requestedTool.toLowerCase()
+                );
+                const matched = exact || items[0];
+                if (!matched) {
+                    setLicenseStats({ total: 0, used: 0, available: 0, loading: false });
+                    return;
+                }
+                const total = Number(matched.networkInstallations) || 0;
+                const used = Number(matched.managedInstallations) || 0;
+                setLicenseStats({
+                    total,
+                    used,
+                    available: total - used,
+                    loading: false,
+                });
+            } catch (error) {
+                if (error.name === 'AbortError') return;
+                setLicenseStats({ total: 0, used: 0, available: 0, loading: false });
+            }
+        };
+        loadStats();
+        return () => controller.abort();
+    }, [requestedTool]);
 
     const overviewItems = [
         { label: 'Request Type', value: request.requestOverview?.type || 'New Tool Request', icon: FileStack },
@@ -76,6 +131,34 @@ export default function RequestDetailsSidebar({ isOpen, onClose, request, onAppr
                                     <span className="text-sm font-bold text-gray-900">{item.value}</span>
                                 </div>
                             ))}
+                        </div>
+                    </div>
+
+                    {/* License & Usage Stats */}
+                    <div className="space-y-4">
+                        <h4 className="text-sm font-bold text-blue-900 uppercase tracking-wider flex items-center">
+                            <Clock className="w-4 h-4 mr-2" />
+                            License & Usage Stats
+                        </h4>
+                        <div className="grid grid-cols-3 gap-3">
+                            <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm text-center">
+                                <p className="text-2xl font-bold text-gray-900">
+                                    {licenseStats.loading ? '-' : licenseStats.total}
+                                </p>
+                                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1">Total</p>
+                            </div>
+                            <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm text-center">
+                                <p className="text-2xl font-bold text-gray-900">
+                                    {licenseStats.loading ? '-' : licenseStats.used}
+                                </p>
+                                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1">Used</p>
+                            </div>
+                            <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm text-center">
+                                <p className="text-2xl font-bold text-blue-700">
+                                    {licenseStats.loading ? '-' : licenseStats.available}
+                                </p>
+                                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1">Available</p>
+                            </div>
                         </div>
                     </div>
 
