@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { Search, Package, AlertCircle, Shield, LayoutGrid, List } from "lucide-react";
+import { useCatalogData } from "@/lib/useCatalogData";
 
 export default function CatalogPage() {
     const [searchInput, setSearchInput] = useState("");
@@ -14,13 +15,26 @@ export default function CatalogPage() {
     const [sortOrder, setSortOrder] = useState("asc");
     const [limit, setLimit] = useState(50);
     const [page, setPage] = useState(1);
-    const [rows, setRows] = useState([]);
-    const [total, setTotal] = useState(0);
-    const [facets, setFacets] = useState({ categories: [], softwareTypes: [], licenseTypes: [] });
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState("");
     const [viewMode, setViewMode] = useState("list");
     const [logoAttemptById, setLogoAttemptById] = useState({});
+    const offset = (page - 1) * limit;
+
+    const {
+        items: rows,
+        total,
+        facets,
+        loading,
+        error,
+    } = useCatalogData({
+        q: debouncedQuery,
+        category: selectedCategory,
+        type: selectedType,
+        license: selectedLicense,
+        sort: sortBy,
+        order: sortOrder,
+        limit,
+        offset,
+    });
 
     useEffect(() => {
         const handle = setTimeout(() => {
@@ -29,51 +43,6 @@ export default function CatalogPage() {
         }, 400);
         return () => clearTimeout(handle);
     }, [searchInput]);
-
-    useEffect(() => {
-        const controller = new AbortController();
-        const offset = (page - 1) * limit;
-        const params = new URLSearchParams({
-            q: debouncedQuery,
-            category: selectedCategory,
-            type: selectedType,
-            license: selectedLicense,
-            sort: sortBy,
-            order: sortOrder,
-            limit: String(limit),
-            offset: String(offset),
-        });
-
-        const fetchData = async () => {
-            try {
-                setLoading(true);
-                setError("");
-
-                const response = await fetch(`/api/software?${params.toString()}`, {
-                    signal: controller.signal,
-                });
-
-                if (!response.ok) {
-                    throw new Error(`Request failed with status ${response.status}`);
-                }
-
-                const payload = await response.json();
-                setRows(Array.isArray(payload.items) ? payload.items : []);
-                setTotal(Number(payload.total) || 0);
-                setFacets(payload.facets || { categories: [], softwareTypes: [], licenseTypes: [] });
-            } catch (fetchError) {
-                if (fetchError.name === "AbortError") return;
-                setError(fetchError.message || "Failed to load software data");
-                setRows([]);
-                setTotal(0);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchData();
-        return () => controller.abort();
-    }, [debouncedQuery, selectedCategory, selectedType, selectedLicense, sortBy, sortOrder, limit, page]);
 
     useEffect(() => {
         setLogoAttemptById({});

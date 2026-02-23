@@ -17,6 +17,8 @@ const HEADER_MAP = {
     "network installations": "networkInstallations",
     "managed installations": "managedInstallations",
     "software type": "softwareType",
+    "owning team": "owningTeam",
+    "contract status": "contractStatus",
 };
 
 const MANUFACTURER_DOMAIN_MAP = {
@@ -142,6 +144,12 @@ function normalizeRow(row, index) {
         networkInstallations: toInt(row.networkInstallations),
         managedInstallations: toInt(row.managedInstallations),
         softwareType: row.softwareType || "-",
+        ...(Object.prototype.hasOwnProperty.call(row, "owningTeam")
+            ? { owningTeam: row.owningTeam || "" }
+            : {}),
+        ...(Object.prototype.hasOwnProperty.call(row, "contractStatus")
+            ? { contractStatus: row.contractStatus || "" }
+            : {}),
     };
 }
 
@@ -222,7 +230,7 @@ export async function queryCatalog(params = {}) {
     const license = String(params.license || "").trim().toLowerCase();
     const sort = String(params.sort || "rowIndex");
     const order = String(params.order || "asc").toLowerCase() === "desc" ? "desc" : "asc";
-    const limit = Math.min(Math.max(Number.parseInt(params.limit, 10) || 50, 1), 500);
+    const limit = Math.min(Math.max(Number.parseInt(params.limit, 10) || 50, 1), 50000);
     const offset = Math.max(Number.parseInt(params.offset, 10) || 0, 0);
 
     const filtered = items.filter((item) => {
