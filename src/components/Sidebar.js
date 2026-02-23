@@ -49,6 +49,14 @@ const menuItems = [
             { name: 'License Inventory', icon: CreditCard, href: '/licenses' },
         ]
     },
+
+    // ✅ NEW SECTION ADDED HERE
+    {
+        section: 'Analytics & Insights',
+        items: [
+            { name: 'Analytics Dashboard', icon: BarChart2, href: '/analytics' },
+        ]
+    },
 ];
 
 export default function Sidebar() {
