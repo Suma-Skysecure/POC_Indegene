@@ -4,10 +4,12 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { Search, ChevronDown, AlertCircle, Shield, LayoutGrid, List } from "lucide-react";
 
+const ENDUSER_ALLOWED_CATEGORIES = ["Approved Softwares", "Internet", "Other Tools"];
+
 export default function SearchTools() {
     const [searchInput, setSearchInput] = useState("");
     const [debouncedQuery, setDebouncedQuery] = useState("");
-    const [selectedCategory, setSelectedCategory] = useState("");
+    const [selectedCategory, setSelectedCategory] = useState(ENDUSER_ALLOWED_CATEGORIES[0]);
     const [selectedType, setSelectedType] = useState("");
     const [selectedLicense, setSelectedLicense] = useState("");
     const [sortBy, setSortBy] = useState("rowIndex");
@@ -19,7 +21,7 @@ export default function SearchTools() {
     const [facets, setFacets] = useState({ categories: [], softwareTypes: [], licenseTypes: [] });
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
-    const [viewMode, setViewMode] = useState("list");
+    const [viewMode, setViewMode] = useState("grid");
     const [logoAttemptById, setLogoAttemptById] = useState({});
 
     useEffect(() => {
@@ -175,10 +177,9 @@ export default function SearchTools() {
                                     setPage(1);
                                 }}
                             >
-                                <option value="">All Categories</option>
-                                {facets.categories.map((item) => (
-                                    <option key={item.value} value={item.value}>
-                                        {item.value} ({item.count})
+                                {ENDUSER_ALLOWED_CATEGORIES.map((category) => (
+                                    <option key={category} value={category}>
+                                        {category}
                                     </option>
                                 ))}
                             </select>
@@ -236,8 +237,6 @@ export default function SearchTools() {
                             <option value="version">Version</option>
                             <option value="manufacturer">Manufacturer</option>
                             <option value="category">Category</option>
-                            <option value="networkInstallations">Network Installations</option>
-                            <option value="managedInstallations">Managed Installations</option>
                         </select>
                         <select
                             className="appearance-none px-3 py-2 border border-gray-100 rounded-xl text-sm font-semibold text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/10"
@@ -307,22 +306,20 @@ export default function SearchTools() {
                                 <th className="px-4 py-3.5">Manufacturer</th>
                                 <th className="px-4 py-3.5">License Type</th>
                                 <th className="px-4 py-3.5">Category</th>
-                                <th className="px-4 py-3.5">Network ID</th>
-                                <th className="px-4 py-3.5">Managed ID</th>
                                 <th className="px-4 py-3.5">Software Type</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {loading && (
                                 <tr>
-                                    <td colSpan={8} className="px-4 py-8 text-center text-sm text-gray-500">
+                                    <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-500">
                                         Loading software catalog...
                                     </td>
                                 </tr>
                             )}
                             {!loading && error && (
                                 <tr>
-                                    <td colSpan={8} className="px-4 py-8">
+                                    <td colSpan={6} className="px-4 py-8">
                                         <div className="flex items-center justify-center gap-2 text-sm text-red-600 font-medium">
                                             <AlertCircle className="h-4 w-4" />
                                             {error}
@@ -332,7 +329,7 @@ export default function SearchTools() {
                             )}
                             {!loading && !error && rows.length === 0 && (
                                 <tr>
-                                    <td colSpan={8} className="px-4 py-8 text-center text-sm text-gray-500">
+                                    <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-500">
                                         No software found for the selected filters.
                                     </td>
                                 </tr>
@@ -373,8 +370,6 @@ export default function SearchTools() {
                                             {badge.label}
                                         </span>
                                     </td>
-                                    <td className="px-4 py-3.5 text-xs font-semibold text-slate-700">{tool.networkInstallations}</td>
-                                    <td className="px-4 py-3.5 text-xs font-semibold text-slate-700">{tool.managedInstallations}</td>
                                     <td className="px-4 py-3.5 text-xs text-slate-600">{tool.softwareType}</td>
                                 </tr>
                             )})}
@@ -443,8 +438,6 @@ export default function SearchTools() {
                                         </span>
                                     </div>
                                     <div className="mt-4 space-y-1.5 text-xs text-slate-600">
-                                        <div className="flex justify-between"><span>Network ID:</span><span className="font-semibold text-slate-800">{tool.networkInstallations}</span></div>
-                                        <div className="flex justify-between"><span>Managed ID:</span><span className="font-semibold text-slate-800">{tool.managedInstallations}</span></div>
                                         <div className="flex justify-between"><span>Type:</span><span className="font-semibold text-slate-800">{tool.softwareType}</span></div>
                                     </div>
                                 </Link>

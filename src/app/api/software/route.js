@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { queryCatalog } from "@/lib/server/softwareCatalog";
+import { addRuntimeCatalogItem, queryCatalog } from "@/lib/server/softwareCatalog";
 
 export const runtime = "nodejs";
 
@@ -35,6 +35,22 @@ export async function GET(request) {
                 details: error?.message || "Unknown error",
             },
             { status: 500 }
+        );
+    }
+}
+
+export async function POST(request) {
+    try {
+        const body = await request.json();
+        const item = addRuntimeCatalogItem(body || {});
+        return NextResponse.json({ item }, { status: 201 });
+    } catch (error) {
+        return NextResponse.json(
+            {
+                error: "Failed to add software catalog item",
+                details: error?.message || "Unknown error",
+            },
+            { status: 400 }
         );
     }
 }

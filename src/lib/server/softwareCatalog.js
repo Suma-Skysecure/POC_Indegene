@@ -7,6 +7,7 @@ let cache = null;
 let cacheLoadedAt = 0;
 let cacheFileMtimeMs = 0;
 let cachePromise = null;
+let runtimeCatalogItems = [];
 
 const HEADER_MAP = {
     "software name": "softwareName",
@@ -222,10 +223,15 @@ function compareBySort(a, b, sort) {
 
 export async function queryCatalog(params = {}) {
     const { items } = await getCatalogData();
+    const combinedItems = [...items, ...runtimeCatalogItems];
 
     const q = String(params.q || "").trim().toLowerCase();
     const namePrefix = String(params.namePrefix || "").trim().toLowerCase();
     const category = String(params.category || "").trim().toLowerCase();
+    const categoryList = category
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean);
     const type = String(params.type || "").trim().toLowerCase();
     const license = String(params.license || "").trim().toLowerCase();
     const sort = String(params.sort || "rowIndex");
@@ -233,7 +239,7 @@ export async function queryCatalog(params = {}) {
     const limit = Math.min(Math.max(Number.parseInt(params.limit, 10) || 50, 1), 50000);
     const offset = Math.max(Number.parseInt(params.offset, 10) || 0, 0);
 
-    const filtered = items.filter((item) => {
+    const filtered = combinedItems.filter((item) => {
         const matchesQ = !q
             || contains(item.softwareName, q)
             || contains(item.manufacturer, q)
@@ -243,7 +249,8 @@ export async function queryCatalog(params = {}) {
             || contains(item.licenseType, q);
         const matchesNamePrefix = !namePrefix
             || String(item.softwareName || "").toLowerCase().startsWith(namePrefix);
-        const matchesCategory = !category || String(item.category).toLowerCase() === category;
+        const itemCategory = String(item.category).toLowerCase();
+        const matchesCategory = categoryList.length === 0 || categoryList.includes(itemCategory);
         const matchesType = !type || String(item.softwareType).toLowerCase() === type;
         const matchesLicense = !license || String(item.licenseType).toLowerCase() === license;
         return matchesQ && matchesNamePrefix && matchesCategory && matchesType && matchesLicense;
@@ -265,6 +272,36 @@ export async function queryCatalog(params = {}) {
             licenseTypes: facetCounts(filtered, "licenseType"),
         },
     };
+}
+
+export function addRuntimeCatalogItem(payload = {}) {
+    const now = Date.now();
+    const softwareName = String(payload.softwareName || "").trim();
+    const manufacturer = String(payload.manufacturer || "").trim();
+    if (!softwareName) {
+        throw new Error("softwareName is required");
+    }
+    const networkInstallations = toInt(payload.networkInstallations);
+    const managedInstallations = toInt(payload.managedInstallations);
+    const domain = resolveManufacturerDomain(manufacturer);
+
+    const item = {
+        id: `runtime-${now}-${Math.random().toString(36).slice(2, 9)}`,
+        rowIndex: Number.MAX_SAFE_INTEGER - runtimeCatalogItems.length,
+        softwareName,
+        version: String(payload.version || "-").trim() || "-",
+        manufacturer: manufacturer || "-",
+        logoDomain: domain,
+        logoUrl: domain ? `/api/logo?domain=${encodeURIComponent(domain)}` : "",
+        licenseType: String(payload.licenseType || "-").trim() || "-",
+        category: String(payload.category || "-").trim() || "-",
+        networkInstallations,
+        managedInstallations,
+        softwareType: String(payload.softwareType || "-").trim() || "-",
+    };
+
+    runtimeCatalogItems = [item, ...runtimeCatalogItems];
+    return item;
 }
 
 export function clearCatalogCache() {

@@ -11,7 +11,6 @@ import {
     AlertTriangle,
     Smartphone,
     Ban,
-    Eye,
 } from "lucide-react";
 import clsx from "clsx";
 
@@ -234,10 +233,6 @@ export default function ShadowItPage() {
         [rowsWithStatus]
     );
 
-    const handleBlock = (row) => {
-        setStatusByKey((prev) => ({ ...prev, [row.rowKey]: "Blocked" }));
-    };
-
     const exportCsv = () => {
         const headers = [
             "App Name",
@@ -296,12 +291,6 @@ export default function ShadowItPage() {
                 <span className={clsx("font-medium", getRiskColor(row.riskLevel))}>{row.riskLevel}</span>
             ),
         },
-        {
-            header: "Installations",
-            accessor: "installations",
-            className: "text-gray-900 font-medium",
-            render: (row) => `${row.networkInstallations} / ${row.managedInstallations}`,
-        },
         { header: "Manufacturer", accessor: "manufacturer", className: "text-gray-500" },
         { header: "License Type", accessor: "licenseType", className: "text-gray-500" },
         {
@@ -309,28 +298,6 @@ export default function ShadowItPage() {
             accessor: "status",
             render: (row) => (
                 <span className={clsx("font-medium text-sm", getStatusColor(row.status))}>{row.status}</span>
-            ),
-        },
-        {
-            header: "Action",
-            accessor: "action",
-            className: "text-right",
-            render: (row) => (
-                <div className="flex justify-end">
-                    {row.riskLevel === "High" || row.riskLevel === "Medium" ? (
-                        <button
-                            onClick={() => handleBlock(row)}
-                            className="bg-red-600 hover:bg-red-700 text-white px-4 py-1.5 rounded text-sm font-medium transition-colors"
-                        >
-                            Block
-                        </button>
-                    ) : (
-                        <button className="border border-gray-300 hover:bg-gray-50 text-gray-700 px-4 py-1.5 rounded text-sm font-medium transition-colors inline-flex items-center gap-1">
-                            <Eye className="h-3.5 w-3.5" />
-                            View
-                        </button>
-                    )}
-                </div>
             ),
         },
     ];

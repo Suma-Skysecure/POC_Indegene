@@ -22,6 +22,7 @@ export function useCatalogData(params = {}, options = {}) {
             order: String(params.order ?? "asc").trim(),
             limit: String(params.limit ?? 50).trim(),
             offset: String(params.offset ?? 0).trim(),
+            refreshKey: String(params.refreshKey ?? "").trim(),
         };
         return new URLSearchParams(normalized).toString();
     }, [params]);
