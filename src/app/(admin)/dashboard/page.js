@@ -1,15 +1,49 @@
 "use client";
 
-import React from 'react';
-import KPICard from '@/components/KPICard';
-import { SpendTrendChart, ToolUsageChart } from '@/components/DashboardCharts';
-import RecentRequests from '@/components/RecentRequests';
-import { IndianRupee, RefreshCw, PieChart, Clock, Database, Calendar, Plus } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from "react";
+import KPICard from "@/components/KPICard";
+import { SpendTrendChart, ToolUsageChart } from "@/components/DashboardCharts";
+import RecentRequests from "@/components/RecentRequests";
+import { IndianRupee, RefreshCw, PieChart, Clock, Database, Calendar } from "lucide-react";
+import { DASHBOARD_CHARTS_SEED, DASHBOARD_KPI_SEED } from "@/lib/admin/sharedData";
+
+const FALLBACK_DASHBOARD = {
+    metrics: DASHBOARD_KPI_SEED,
+    recent: { requests: [], licenses: [] },
+    charts: DASHBOARD_CHARTS_SEED,
+    data: {},
+};
 
 export default function DashboardPage() {
+    const [dashboard, setDashboard] = useState(FALLBACK_DASHBOARD);
+
+    useEffect(() => {
+        let cancelled = false;
+        fetch("/api/admin/dashboard", { cache: "no-store" })
+            .then((response) => (response.ok ? response.json() : Promise.reject(new Error("Failed to load dashboard"))))
+            .then((payload) => {
+                if (!cancelled && payload) setDashboard(payload);
+            })
+            .catch(() => {
+                if (!cancelled) setDashboard(FALLBACK_DASHBOARD);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    const metrics = dashboard?.metrics || FALLBACK_DASHBOARD.metrics;
+    const recentRequests = dashboard?.recent?.requests || [];
+    const charts = useMemo(
+        () => ({
+            spendTrend: dashboard?.charts?.spendTrend || DASHBOARD_CHARTS_SEED.spendTrend,
+            toolUsage: dashboard?.charts?.toolUsage || DASHBOARD_CHARTS_SEED.toolUsage,
+        }),
+        [dashboard]
+    );
+
     return (
         <div className="space-y-6">
-            {/* Page Title */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-900">Dashboard Overview</h1>
@@ -23,52 +57,53 @@ export default function DashboardPage() {
                 </div>
             </div>
 
-            {/* KPI Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
                 <KPICard
                     title="Total Software Spend"
-                    value="₹12.4M"
-                    change="4% QoQ"
+                    value={metrics.totalSoftwareSpend}
+                    change={metrics.softwareSpendChange}
                     isPositive={true}
                     icon={IndianRupee}
                 />
                 <KPICard
                     title="Cost Avoided via Reuse"
-                    value="₹1.2M"
-                    change="18%"
+                    value={metrics.costAvoidedViaReuse}
+                    change={metrics.costAvoidedChange}
                     isPositive={true}
                     icon={RefreshCw}
                 />
                 <KPICard
                     title="Known vs Unknown Tools"
-                    value="68%"
-                    subtext={<span>Known 68%, <span className="text-red-500">32% Unknown</span></span>}
+                    value={`${metrics.knownToolsPercent}%`}
+                    subtext={
+                        <span>
+                            Known {metrics.knownToolsPercent}%, <span className="text-red-500">{metrics.unknownToolsPercent}% Unknown</span>
+                        </span>
+                    }
                     icon={PieChart}
                 />
                 <KPICard
                     title="Avg Approval Time"
-                    value="2.4 days"
-                    change="30%"
+                    value={metrics.avgApprovalTime}
+                    change={metrics.avgApprovalTimeChange}
                     isPositive={true}
                     icon={Clock}
                 />
                 <KPICard
                     title="Total Reuse Tools"
-                    value="342"
-                    change="12%"
+                    value={String(metrics.totalReuseTools)}
+                    change={metrics.totalReuseToolsChange}
                     isPositive={true}
                     icon={Database}
                 />
             </div>
 
-            {/* Charts Section */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <SpendTrendChart />
-                <ToolUsageChart />
+                <SpendTrendChart data={charts.spendTrend} />
+                <ToolUsageChart data={charts.toolUsage} />
             </div>
 
-            {/* Recent Requests Table */}
-            <RecentRequests />
+            <RecentRequests data={recentRequests} />
         </div>
     );
 }

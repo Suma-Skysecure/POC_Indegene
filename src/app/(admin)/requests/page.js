@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Table from '@/components/Table';
 import RequestDetailsSidebar from '@/components/RequestDetailsSidebar';
 import { Search, Filter, Download, Clock, CheckCircle, Hourglass, AlertTriangle, CheckSquare, XSquare, Trash2 } from 'lucide-react';
@@ -10,6 +10,7 @@ import { loadRequests, persistRequests } from '@/lib/requestStore';
 
 const REQUESTS_API_URL = process.env.NEXT_PUBLIC_REQUESTS_API_URL || 'http://localhost:5000/requests';
 const REQUESTS_API_FALLBACKS = [
+    '/api/admin/requests',
     REQUESTS_API_URL,
     'http://localhost:5000/requests',
     'http://localhost:5000/api/requests',
@@ -125,7 +126,28 @@ export default function RequestsPage() {
     const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
     const [currentPage, setCurrentPage] = useState(1);
     const [activeApiUrl, setActiveApiUrl] = useState(REQUESTS_API_URL);
+    const lastAdminSyncSignatureRef = useRef('');
     const ITEMS_PER_PAGE = 7;
+
+    const syncRequestsToAdminStore = useCallback(async (records) => {
+        const payload = Array.isArray(records) ? records : [];
+        if (payload.length === 0) return;
+        const signature = payload
+            .map((item) => `${item.id}:${item.status}:${item.date || ''}:${item.createdAt || ''}`)
+            .join('|');
+        if (lastAdminSyncSignatureRef.current === signature) return;
+
+        try {
+            await fetch('/api/admin/requests', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ data: payload }),
+            });
+            lastAdminSyncSignatureRef.current = signature;
+        } catch (error) {
+            console.error('Failed to sync requests to admin store:', error);
+        }
+    }, []);
 
     const getStatusEndpoint = useCallback((baseUrl, id) => {
         const sanitized = String(baseUrl || '').replace(/\/+$/, '');
@@ -145,28 +167,19 @@ export default function RequestsPage() {
         return `${sanitized}/requests`;
     }, []);
 
-    const getDecisionEndpoint = useCallback((baseUrl, action) => {
-        const sanitized = String(baseUrl || '').replace(/\/+$/, '');
-        if (sanitized.endsWith('/api/requests')) {
-            return `${sanitized.slice(0, -('/requests'.length))}/${action}`;
-        }
-        if (sanitized.endsWith('/requests')) {
-            return `${sanitized.slice(0, -('/requests'.length))}/${action}`;
-        }
-        return `${sanitized}/${action}`;
-    }, []);
-
     const syncRequestsFromApi = useCallback(async () => {
         for (const candidate of REQUESTS_API_FALLBACKS) {
             try {
                 const response = await fetch(candidate, { cache: 'no-store' });
                 if (!response.ok) continue;
                 const payload = await response.json();
-                if (!Array.isArray(payload)) continue;
-                const mapped = payload.map(normalizeApiRequest);
+                const records = Array.isArray(payload) ? payload : payload?.data;
+                if (!Array.isArray(records)) continue;
+                const mapped = records.map(normalizeApiRequest);
                 setCurrentRequests((prev) => {
                     const next = mergeById(prev, mapped);
                     persistRequests(next);
+                    void syncRequestsToAdminStore(next);
                     return next;
                 });
                 setActiveApiUrl(candidate);
@@ -176,7 +189,7 @@ export default function RequestsPage() {
             }
         }
         console.error('Failed to sync admin requests from all configured endpoints.');
-    }, []);
+    }, [syncRequestsToAdminStore]);
 
     useEffect(() => {
         syncRequestsFromApi();
@@ -184,33 +197,26 @@ export default function RequestsPage() {
         return () => clearInterval(interval);
     }, [syncRequestsFromApi]);
 
+    useEffect(() => {
+        void syncRequestsToAdminStore(currentRequests);
+    }, [currentRequests, syncRequestsToAdminStore]);
+
     const pushStatusToApi = async (id, status) => {
         try {
-            await fetch(getStatusEndpoint(activeApiUrl, id), {
+            await fetch(`/api/admin/requests/${encodeURIComponent(id)}/status`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status }),
             });
+            if (!String(activeApiUrl).includes('/api/admin/requests')) {
+                await fetch(getStatusEndpoint(activeApiUrl, id), {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status }),
+                });
+            }
         } catch (error) {
             console.error('Failed to update request status in backend:', error);
-        }
-    };
-
-    const pushDecisionToApi = async (id, action, userEmail) => {
-        const response = await fetch(getDecisionEndpoint(activeApiUrl, action), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ requestId: id, userEmail, userUpn: userEmail }),
-        });
-        if (!response.ok) {
-            let message = `Failed to ${action} request`;
-            try {
-                const payload = await response.json();
-                if (payload?.error) message = payload.error;
-            } catch {
-                // Ignore non-JSON errors and keep fallback message.
-            }
-            throw new Error(message);
         }
     };
 
@@ -224,43 +230,30 @@ export default function RequestsPage() {
         setCurrentRequests(prev => {
             const next = typeof updater === 'function' ? updater(prev) : updater;
             persistRequests(next);
+            void syncRequestsToAdminStore(next);
             return next;
         });
     };
 
     const handleApprove = async (id) => {
-        const target = currentRequests.find((item) => item.id === id);
-        const userEmail = target?.userEmail || target?.formPayload?.userEmail || '';
         updateRequests(prev => prev.map(item =>
             item.id === id ? { ...item, status: 'Approved' } : item
         ));
         if (selectedRequest && selectedRequest.id === id) {
             setSelectedRequest(prev => ({ ...prev, status: 'Approved' }));
         }
-        try {
-            await pushDecisionToApi(id, 'approve', userEmail);
-        } catch (error) {
-            console.error('Failed to call approve endpoint, falling back to status update:', error);
-            await pushStatusToApi(id, 'Approved');
-        }
+        await pushStatusToApi(id, 'Approved');
         showNotification('Request approved successfully!');
     };
 
     const handleReject = async (id) => {
-        const target = currentRequests.find((item) => item.id === id);
-        const userEmail = target?.userEmail || target?.formPayload?.userEmail || '';
         updateRequests(prev => prev.map(item =>
             item.id === id ? { ...item, status: 'Rejected' } : item
         ));
         if (selectedRequest && selectedRequest.id === id) {
             setSelectedRequest(prev => ({ ...prev, status: 'Rejected' }));
         }
-        try {
-            await pushDecisionToApi(id, 'reject', userEmail);
-        } catch (error) {
-            console.error('Failed to call reject endpoint, falling back to status update:', error);
-            await pushStatusToApi(id, 'Rejected');
-        }
+        await pushStatusToApi(id, 'Rejected');
         showNotification('Request rejected successfully!', 'error');
     };
 
@@ -268,16 +261,7 @@ export default function RequestsPage() {
         updateRequests(prev => prev.map(item =>
             selectedIds.includes(item.id) ? { ...item, status: 'Approved' } : item
         ));
-        await Promise.all(selectedIds.map(async (id) => {
-            const target = currentRequests.find((item) => item.id === id);
-            const userEmail = target?.userEmail || target?.formPayload?.userEmail || '';
-            try {
-                await pushDecisionToApi(id, 'approve', userEmail);
-            } catch (error) {
-                console.error('Failed to call approve endpoint, falling back to status update:', error);
-                await pushStatusToApi(id, 'Approved');
-            }
-        }));
+        await Promise.all(selectedIds.map(async (id) => pushStatusToApi(id, 'Approved')));
         showNotification(`${selectedIds.length} requests approved successfully!`);
     };
 
@@ -285,16 +269,7 @@ export default function RequestsPage() {
         updateRequests(prev => prev.map(item =>
             selectedIds.includes(item.id) ? { ...item, status: 'Rejected' } : item
         ));
-        await Promise.all(selectedIds.map(async (id) => {
-            const target = currentRequests.find((item) => item.id === id);
-            const userEmail = target?.userEmail || target?.formPayload?.userEmail || '';
-            try {
-                await pushDecisionToApi(id, 'reject', userEmail);
-            } catch (error) {
-                console.error('Failed to call reject endpoint, falling back to status update:', error);
-                await pushStatusToApi(id, 'Rejected');
-            }
-        }));
+        await Promise.all(selectedIds.map(async (id) => pushStatusToApi(id, 'Rejected')));
         showNotification(`${selectedIds.length} requests rejected successfully!`, 'error');
     };
 

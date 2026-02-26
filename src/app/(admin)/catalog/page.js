@@ -173,10 +173,11 @@ export default function CatalogPage() {
         setIsRemoveToolOpen(true);
     };
 
-    const handleConfirmRemove = (event) => {
+    const handleConfirmRemove = async (event) => {
         event.preventDefault();
         if (selectedVisibleCount === 0) return;
         const selectedRows = selectedVisibleRows;
+        const selectedIds = selectedRows.map((tool) => tool.id);
         setRemovedToolIds((prev) => {
             const next = new Set(prev);
             selectedRows.forEach((tool) => {
@@ -191,6 +192,16 @@ export default function CatalogPage() {
         });
         setIsRemoveToolOpen(false);
         setRemoveReason("");
+        try {
+            await fetch("/api/admin/catalog", {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ ids: selectedIds }),
+            });
+            setRefreshKey((value) => value + 1);
+        } catch {
+            // keep optimistic UI deletion even if API call fails
+        }
         if (selectedRows.length === 1) {
             setDeleteToast(`"${selectedRows[0].softwareName}" deleted successfully`);
         } else if (selectedRows.length > 1) {

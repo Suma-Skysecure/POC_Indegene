@@ -2,7 +2,6 @@ import React from 'react';
 import Link from 'next/link';
 import clsx from 'clsx';
 import Table from './Table';
-import { dashboardRequestsData } from '../data/mockData';
 
 const statusStyles = {
     'Pending': 'text-amber-600',
@@ -11,7 +10,7 @@ const statusStyles = {
     'Risk': 'text-red-600',
 };
 
-export default function RecentRequests() {
+export default function RecentRequests({ data = [] }) {
     const columns = [
         {
             header: 'Request ID',
@@ -37,8 +36,7 @@ export default function RecentRequests() {
         }
     ];
 
-    // Use specific dashboard data
-    const recentData = dashboardRequestsData;
+    const recentData = Array.isArray(data) ? data : [];
 
     return (
         <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">

@@ -19,6 +19,47 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+app.use("/api/admin", async (req, res) => {
+  try {
+    const targetUrl = `http://localhost:3000${req.originalUrl}`;
+    console.log(`[admin-proxy] ${req.method} ${req.originalUrl} -> ${targetUrl}`);
+
+    const forwardHeaders = {};
+    const headerNames = ["content-type", "authorization", "x-api-key", "cookie"];
+    headerNames.forEach((name) => {
+      const value = req.headers[name];
+      if (value) forwardHeaders[name] = value;
+    });
+
+    const method = String(req.method || "GET").toUpperCase();
+    const shouldSendBody = !["GET", "HEAD"].includes(method);
+    const body =
+      shouldSendBody && typeof req.body !== "undefined"
+        ? JSON.stringify(req.body)
+        : undefined;
+
+    const upstreamResponse = await fetchImpl(targetUrl, {
+      method,
+      headers: forwardHeaders,
+      body,
+    });
+
+    const contentType = upstreamResponse.headers.get("content-type");
+    if (contentType) {
+      res.setHeader("content-type", contentType);
+    }
+
+    const payloadBuffer = Buffer.from(await upstreamResponse.arrayBuffer());
+    return res.status(upstreamResponse.status).send(payloadBuffer);
+  } catch (error) {
+    console.error("[admin-proxy] error", error && error.stack ? error.stack : error);
+    return res.status(502).json({
+      error: "Admin proxy failed",
+      details: error && error.message ? error.message : "Unknown error",
+    });
+  }
+});
+
 let requests = []; // Temporary in-memory storage
 const CATALOG_CSV_PATH = path.join(__dirname, "data", "EPC_Softwarelist.csv");
 

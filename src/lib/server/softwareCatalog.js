@@ -7,7 +7,18 @@ let cache = null;
 let cacheLoadedAt = 0;
 let cacheFileMtimeMs = 0;
 let cachePromise = null;
-let runtimeCatalogItems = [];
+
+const CATALOG_STATE_KEY = "__indegeneSoftwareCatalogState";
+
+function getCatalogRuntimeState() {
+    if (!globalThis[CATALOG_STATE_KEY]) {
+        globalThis[CATALOG_STATE_KEY] = {
+            runtimeCatalogItems: [],
+            removedCatalogIds: new Set(),
+        };
+    }
+    return globalThis[CATALOG_STATE_KEY];
+}
 
 const HEADER_MAP = {
     "software name": "softwareName",
@@ -223,7 +234,10 @@ function compareBySort(a, b, sort) {
 
 export async function queryCatalog(params = {}) {
     const { items } = await getCatalogData();
-    const combinedItems = [...items, ...runtimeCatalogItems];
+    const runtimeState = getCatalogRuntimeState();
+    const combinedItems = [...items, ...runtimeState.runtimeCatalogItems].filter(
+        (item) => !runtimeState.removedCatalogIds.has(item.id)
+    );
 
     const q = String(params.q || "").trim().toLowerCase();
     const namePrefix = String(params.namePrefix || "").trim().toLowerCase();
@@ -275,6 +289,7 @@ export async function queryCatalog(params = {}) {
 }
 
 export function addRuntimeCatalogItem(payload = {}) {
+    const runtimeState = getCatalogRuntimeState();
     const now = Date.now();
     const softwareName = String(payload.softwareName || "").trim();
     const manufacturer = String(payload.manufacturer || "").trim();
@@ -287,7 +302,7 @@ export function addRuntimeCatalogItem(payload = {}) {
 
     const item = {
         id: `runtime-${now}-${Math.random().toString(36).slice(2, 9)}`,
-        rowIndex: Number.MAX_SAFE_INTEGER - runtimeCatalogItems.length,
+        rowIndex: Number.MAX_SAFE_INTEGER - runtimeState.runtimeCatalogItems.length,
         softwareName,
         version: String(payload.version || "-").trim() || "-",
         manufacturer: manufacturer || "-",
@@ -300,8 +315,31 @@ export function addRuntimeCatalogItem(payload = {}) {
         softwareType: String(payload.softwareType || "-").trim() || "-",
     };
 
-    runtimeCatalogItems = [item, ...runtimeCatalogItems];
+    runtimeState.runtimeCatalogItems = [item, ...runtimeState.runtimeCatalogItems];
     return item;
+}
+
+export async function getAllCatalogItems() {
+    const { items } = await getCatalogData();
+    const runtimeState = getCatalogRuntimeState();
+    return [...runtimeState.runtimeCatalogItems, ...items].filter(
+        (item) => !runtimeState.removedCatalogIds.has(item.id)
+    );
+}
+
+export async function removeCatalogItems(ids = []) {
+    const runtimeState = getCatalogRuntimeState();
+    const idList = Array.isArray(ids)
+        ? ids.map((id) => String(id || "").trim()).filter(Boolean)
+        : [];
+
+    if (idList.length === 0) return { removedCount: 0 };
+
+    idList.forEach((id) => runtimeState.removedCatalogIds.add(id));
+    runtimeState.runtimeCatalogItems = runtimeState.runtimeCatalogItems.filter(
+        (item) => !runtimeState.removedCatalogIds.has(item.id)
+    );
+    return { removedCount: idList.length };
 }
 
 export function clearCatalogCache() {

@@ -210,8 +210,21 @@ const postRequestToBackend = async (payload) => {
     return null;
 };
 
+const postRequestToAdminStore = async (request) => {
+    try {
+        await fetch('/api/admin/requests', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(request),
+        });
+    } catch {
+        // Keep local request flow working even if admin store sync fails.
+    }
+};
+
 export const addRequestFromFormAndSync = async ({ requestType, formData }) => {
     const localRequest = addRequestFromForm({ requestType, formData });
+    await postRequestToAdminStore(localRequest);
     const syncedRequest = await postRequestToBackend({
         id: localRequest.id,
         tool: formData.toolName,
@@ -238,5 +251,6 @@ export const addRequestFromFormAndSync = async ({ requestType, formData }) => {
         [syncedRequest]
     );
     persistRequests(merged);
+    await postRequestToAdminStore(syncedRequest);
     return syncedRequest;
 };

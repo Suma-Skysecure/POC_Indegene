@@ -241,9 +241,10 @@ export default function LicenseInventoryPage() {
         setIsRemoveLicenseOpen(true);
     };
 
-    const handleConfirmRemove = (event) => {
+    const handleConfirmRemove = async (event) => {
         event.preventDefault();
         if (selectedVisibleCount === 0) return;
+        const ids = selectedVisibleRows.map((row) => row.rowKey);
         setRemovedLicenseIds((prev) => {
             const next = new Set(prev);
             selectedVisibleRows.forEach((row) => next.add(row.rowKey));
@@ -256,6 +257,16 @@ export default function LicenseInventoryPage() {
         });
         setIsRemoveLicenseOpen(false);
         setRemoveReason("");
+        try {
+            await fetch("/api/admin/catalog", {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ ids }),
+            });
+            setRefreshKey((value) => value + 1);
+        } catch {
+            // keep optimistic UI deletion even if API call fails
+        }
         if (selectedVisibleRows.length === 1) {
             setDeleteToast(`"${selectedVisibleRows[0].tool}" deleted successfully`);
         } else {
