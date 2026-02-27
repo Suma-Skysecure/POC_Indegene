@@ -224,7 +224,6 @@ const postRequestToAdminStore = async (request) => {
 
 export const addRequestFromFormAndSync = async ({ requestType, formData }) => {
     const localRequest = addRequestFromForm({ requestType, formData });
-    await postRequestToAdminStore(localRequest);
     const syncedRequest = await postRequestToBackend({
         id: localRequest.id,
         tool: formData.toolName,
@@ -243,7 +242,10 @@ export const addRequestFromFormAndSync = async ({ requestType, formData }) => {
         createdAt: new Date().toISOString(),
     });
 
-    if (!syncedRequest) return localRequest;
+    if (!syncedRequest) {
+        await postRequestToAdminStore(localRequest);
+        return localRequest;
+    }
 
     const current = loadRequests();
     const merged = mergeById(

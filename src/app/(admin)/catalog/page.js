@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { Search, Package, AlertCircle, Shield, LayoutGrid, List, Plus } from "lucide-react";
 import { useCatalogData } from "@/lib/useCatalogData";
+import { getCatalogLicenseMetricsByPosition } from "@/lib/licenseMetrics";
 
 export default function CatalogPage() {
     const [searchInput, setSearchInput] = useState("");
@@ -263,16 +264,6 @@ export default function CatalogPage() {
         return `/user/request-new?${params.toString()}`;
     };
 
-    const getDummyLicenseMetrics = (index) => {
-        const total = 100 + (index % 6) * 25;
-        const used = Math.max(0, total - (10 + (index % 5) * 7));
-        return {
-            total,
-            used,
-            available: total - used,
-        };
-    };
-
     return (
         <div className="space-y-6">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -503,12 +494,12 @@ export default function CatalogPage() {
                                 </td>
                             </tr>
                         )}
-                        {!loading && !error && visibleRows.map((tool, index) => {
+                        {!loading && !error && visibleRows.map((tool) => {
                             const badge = getCategoryBadge(tool.category);
                             const logoCandidates = getLogoCandidates(tool);
                             const logoAttempt = logoAttemptById[tool.id] || 0;
                             const logoSrc = logoCandidates[logoAttempt] || "";
-                            const metrics = getDummyLicenseMetrics(index);
+                            const metrics = getCatalogLicenseMetricsByPosition(tool.rowIndex);
                             return (
                             <tr key={tool.id} className="hover:bg-slate-50/70">
                                 <td className="px-4 py-3.5">

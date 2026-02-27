@@ -160,6 +160,18 @@ export default function RequestsPage() {
         return `${sanitized}/requests/${encodeURIComponent(id)}/status`;
     }, []);
 
+    const getNotificationEndpoint = useCallback((baseUrl, status) => {
+        const sanitized = String(baseUrl || '').replace(/\/+$/, '');
+        const action = String(status || '').toLowerCase() === 'approved' ? 'approve' : 'reject';
+        if (sanitized.endsWith('/api/requests')) {
+            return sanitized.replace(/\/api\/requests$/i, `/api/${action}`);
+        }
+        if (sanitized.endsWith('/requests')) {
+            return sanitized.replace(/\/requests$/i, `/${action}`);
+        }
+        return `${sanitized}/${action}`;
+    }, []);
+
     const getDeleteEndpoint = useCallback((baseUrl) => {
         const sanitized = String(baseUrl || '').replace(/\/+$/, '');
         if (sanitized.endsWith('/api/requests')) return sanitized;
@@ -168,27 +180,39 @@ export default function RequestsPage() {
     }, []);
 
     const syncRequestsFromApi = useCallback(async () => {
-        for (const candidate of REQUESTS_API_FALLBACKS) {
+        const candidates = Array.from(new Set(REQUESTS_API_FALLBACKS));
+        const results = await Promise.all(candidates.map(async (candidate) => {
             try {
                 const response = await fetch(candidate, { cache: 'no-store' });
-                if (!response.ok) continue;
+                if (!response.ok) return null;
                 const payload = await response.json();
                 const records = Array.isArray(payload) ? payload : payload?.data;
-                if (!Array.isArray(records)) continue;
-                const mapped = records.map(normalizeApiRequest);
-                setCurrentRequests((prev) => {
-                    const next = mergeById(prev, mapped);
-                    persistRequests(next);
-                    void syncRequestsToAdminStore(next);
-                    return next;
-                });
-                setActiveApiUrl(candidate);
-                return;
+                if (!Array.isArray(records)) return null;
+                return {
+                    candidate,
+                    mapped: records.map(normalizeApiRequest),
+                };
             } catch {
-                // Try next candidate.
+                return null;
             }
+        }));
+
+        const successful = results.filter(Boolean);
+        if (successful.length === 0) {
+            console.error('Failed to sync admin requests from all configured endpoints.');
+            return;
         }
-        console.error('Failed to sync admin requests from all configured endpoints.');
+
+        const mergedRemote = successful.reduce((acc, entry) => mergeById(acc, entry.mapped), []);
+        setCurrentRequests((prev) => {
+            const next = mergeById(prev, mergedRemote);
+            persistRequests(next);
+            void syncRequestsToAdminStore(next);
+            return next;
+        });
+
+        const preferred = successful.find((entry) => !String(entry.candidate).includes('/api/admin/requests'));
+        setActiveApiUrl(preferred ? preferred.candidate : successful[0].candidate);
     }, [syncRequestsToAdminStore]);
 
     useEffect(() => {
@@ -208,11 +232,26 @@ export default function RequestsPage() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status }),
             });
+            const requestRecord = currentRequests.find((item) => item.id === id);
             if (!String(activeApiUrl).includes('/api/admin/requests')) {
                 await fetch(getStatusEndpoint(activeApiUrl, id), {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ status }),
+                });
+
+                const userEmail =
+                    requestRecord?.userEmail
+                    || requestRecord?.formPayload?.userEmail
+                    || '';
+                await fetch(getNotificationEndpoint(activeApiUrl, status), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        requestId: id,
+                        userEmail,
+                        userUpn: userEmail,
+                    }),
                 });
             }
         } catch (error) {

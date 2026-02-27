@@ -4,6 +4,14 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { X, CheckCircle, RotateCcw, AlertTriangle, Shield, ExternalLink, FileText, Briefcase, Users, Layout, Clock, FileStack, Search } from 'lucide-react';
 import Image from 'next/image';
 import clsx from 'clsx';
+import { getCatalogLicenseMetricsByPosition } from '@/lib/licenseMetrics';
+
+const normalizeToolName = (value) =>
+    String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .replace(/[^a-z0-9]+/g, '');
 
 export default function RequestDetailsSidebar({ isOpen, onClose, request, onApprove, onReject, showActions = true }) {
     if (!isOpen || !request) return null;
@@ -38,20 +46,20 @@ export default function RequestDetailsSidebar({ isOpen, onClose, request, onAppr
                 if (!response.ok) throw new Error(`Request failed with status ${response.status}`);
                 const payload = await response.json();
                 const items = Array.isArray(payload.items) ? payload.items : [];
-                const exact = items.find(
-                    (item) => String(item.softwareName || '').trim().toLowerCase() === requestedTool.toLowerCase()
+                const requestedKey = normalizeToolName(requestedTool);
+                const matched = items.find(
+                    (item) => normalizeToolName(item.softwareName) === requestedKey
                 );
-                const matched = exact || items[0];
                 if (!matched) {
                     setLicenseStats({ total: 0, used: 0, available: 0, loading: false });
                     return;
                 }
-                const total = Number(matched.networkInstallations) || 0;
-                const used = Number(matched.managedInstallations) || 0;
+
+                const metrics = getCatalogLicenseMetricsByPosition(matched.rowIndex);
                 setLicenseStats({
-                    total,
-                    used,
-                    available: total - used,
+                    total: metrics.total,
+                    used: metrics.used,
+                    available: metrics.available,
                     loading: false,
                 });
             } catch (error) {
