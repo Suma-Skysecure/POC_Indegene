@@ -1,12 +1,14 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import Link from "next/link";
-import { Search, Package, AlertCircle, Shield, LayoutGrid, List, Plus } from "lucide-react";
+import { Search, Package, AlertCircle, Shield, LayoutGrid, List, Plus, X, Building2, UserRound, CalendarDays } from "lucide-react";
 import { useCatalogData } from "@/lib/useCatalogData";
 import { getCatalogLicenseMetricsByPosition } from "@/lib/licenseMetrics";
+import { computeRisk } from "@/lib/shadowIt";
 
 export default function CatalogPage() {
+    const BUSINESS_DOMAIN_OWNERS = ["Jai Kumar", "Pranav Sharma", "Shravan Chandra", "Aarati Daivan", "Maanya Kumari"];
+    const IT_OWNERS = ["John", "Saara Mathew", "Shwetha Verma", "Maanav Gupta", "Manikantan"];
     const [searchInput, setSearchInput] = useState("");
     const [debouncedQuery, setDebouncedQuery] = useState("");
     const [selectedCategory, setSelectedCategory] = useState("");
@@ -22,6 +24,8 @@ export default function CatalogPage() {
     const [removedToolIds, setRemovedToolIds] = useState(new Set());
     const [isAddToolOpen, setIsAddToolOpen] = useState(false);
     const [isRemoveToolOpen, setIsRemoveToolOpen] = useState(false);
+    const [isToolDetailsOpen, setIsToolDetailsOpen] = useState(false);
+    const [selectedTool, setSelectedTool] = useState(null);
     const [removeReason, setRemoveReason] = useState("");
     const [deleteToast, setDeleteToast] = useState("");
     const [actionToast, setActionToast] = useState("");
@@ -68,15 +72,16 @@ export default function CatalogPage() {
     }, [rows]);
 
     useEffect(() => {
-        if (!isAddToolOpen && !isRemoveToolOpen) return;
+        if (!isAddToolOpen && !isRemoveToolOpen && !isToolDetailsOpen) return;
         const onKeyDown = (event) => {
             if (event.key !== "Escape") return;
             setIsAddToolOpen(false);
             setIsRemoveToolOpen(false);
+            setIsToolDetailsOpen(false);
         };
         window.addEventListener("keydown", onKeyDown);
         return () => window.removeEventListener("keydown", onKeyDown);
-    }, [isAddToolOpen, isRemoveToolOpen]);
+    }, [isAddToolOpen, isRemoveToolOpen, isToolDetailsOpen]);
 
     useEffect(() => {
         if (!deleteToast) return;
@@ -242,27 +247,72 @@ export default function CatalogPage() {
         };
     };
 
-    const getRequestType = (tool) => {
-        const category = String(tool.category || "").toLowerCase();
-        const licenseType = String(tool.licenseType || "").toLowerCase();
-        const treatedAsExistingSoftware = category.includes("approved")
-            || (licenseType && licenseType !== "unidentified" && licenseType !== "-");
-        return treatedAsExistingSoftware ? "new_license" : "new_software";
+    const hashString = (value) => {
+        const normalized = String(value || "");
+        let hash = 0;
+        for (let i = 0; i < normalized.length; i += 1) {
+            hash = (hash << 5) - hash + normalized.charCodeAt(i);
+            hash |= 0;
+        }
+        return Math.abs(hash);
     };
 
-    const buildRequestLink = (tool) => {
-        const params = new URLSearchParams({
-            requestType: getRequestType(tool),
-            toolId: tool.id,
-            toolName: tool.softwareName || "",
-            vendor: tool.manufacturer || "",
-            users: String(tool.networkInstallations ?? 1),
-            category: tool.category || "",
-            licenseType: tool.licenseType || "",
-            softwareType: tool.softwareType || "",
-        });
-        return `/user/request-new?${params.toString()}`;
+    const getToolCategoryType = (tool) => {
+        const softwareType = String(tool.softwareType || "").toLowerCase();
+        const category = String(tool.category || "").toLowerCase();
+        if (softwareType.includes("web")) return "Web";
+        if (softwareType.includes("desktop")) return "On-Prem";
+        if (category.includes("internet")) return "Web";
+        return "SaaS";
     };
+
+    const formatDate = (date) =>
+        new Intl.DateTimeFormat("en-GB", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+        })
+            .format(date)
+            .replace(/ /g, "-");
+
+    const getToolDetails = (tool) => {
+        if (!tool) return null;
+        const seed = hashString(`${tool.id}-${tool.softwareName}-${tool.manufacturer}`);
+        const businessOwner = BUSINESS_DOMAIN_OWNERS[seed % BUSINESS_DOMAIN_OWNERS.length];
+        const itOwner = IT_OWNERS[seed % IT_OWNERS.length];
+        const categoryType = getToolCategoryType(tool);
+        const isApproved = String(tool.category || "").toLowerCase().includes("approved");
+        const riskLevel = computeRisk(tool).riskLevel;
+
+        const createdDate = new Date(2023 + (seed % 2), seed % 12, (seed % 28) + 1);
+        const lastCertifiedDate = new Date(createdDate);
+        lastCertifiedDate.setMonth(createdDate.getMonth() + 6 + (seed % 5));
+
+        return {
+            toolName: tool.softwareName || "-",
+            description: `${tool.softwareName || "This tool"} is a ${categoryType} platform used in enterprise workflows${tool.softwareType ? ` for ${tool.softwareType}` : ""}.`,
+            categoryType,
+            vendor: tool.manufacturer || "-",
+            businessOwner,
+            itOwner,
+            tprmStatus: isApproved ? "Approved" : "Pending",
+            riskLevel,
+            createdDate: formatDate(createdDate),
+            lastCertifiedDate: formatDate(lastCertifiedDate),
+        };
+    };
+
+    const openToolDetails = (tool) => {
+        setSelectedTool(tool);
+        setIsToolDetailsOpen(true);
+    };
+
+    const closeToolDetails = () => {
+        setIsToolDetailsOpen(false);
+        setSelectedTool(null);
+    };
+
+    const selectedToolDetails = getToolDetails(selectedTool);
 
     return (
         <div className="space-y-6">
@@ -511,7 +561,11 @@ export default function CatalogPage() {
                                     />
                                 </td>
                                 <td className="px-4 py-3.5 text-sm font-semibold text-slate-900">
-                                    <Link href={buildRequestLink(tool)} className="group inline-flex items-start gap-2.5 hover:text-blue-700">
+                                    <button
+                                        type="button"
+                                        onClick={() => openToolDetails(tool)}
+                                        className="group inline-flex items-start gap-2.5 hover:text-blue-700 text-left"
+                                    >
                                         <span className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-blue-100 text-blue-700 overflow-hidden">
                                             {logoSrc ? (
                                                 <img
@@ -529,7 +583,7 @@ export default function CatalogPage() {
                                             )}
                                         </span>
                                         <span className="leading-5 group-hover:underline">{tool.softwareName}</span>
-                                    </Link>
+                                    </button>
                                 </td>
                                 <td className="px-4 py-3.5 text-xs font-medium text-slate-600">{tool.version}</td>
                                 <td className="px-4 py-3.5 text-xs text-slate-600 leading-5">{tool.manufacturer}</td>
@@ -610,9 +664,13 @@ export default function CatalogPage() {
                                         )}
                                     </span>
                                     <div className="min-w-0">
-                                        <Link href={buildRequestLink(tool)} className="text-sm font-semibold text-slate-900 truncate hover:text-blue-700 hover:underline block pr-6">
+                                        <button
+                                            type="button"
+                                            onClick={() => openToolDetails(tool)}
+                                            className="text-sm font-semibold text-slate-900 truncate hover:text-blue-700 hover:underline block pr-6 text-left"
+                                        >
                                             {tool.softwareName}
-                                        </Link>
+                                        </button>
                                         <p className="text-xs text-slate-500">Version {tool.version}</p>
                                         <p className="text-xs text-slate-500 truncate">{tool.manufacturer}</p>
                                     </div>
@@ -831,6 +889,129 @@ export default function CatalogPage() {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {isToolDetailsOpen && selectedToolDetails && (
+                <div
+                    className="fixed inset-0 z-50 bg-gradient-to-br from-blue-200/35 via-slate-300/40 to-slate-500/40 backdrop-blur-sm flex items-center justify-center p-4"
+                    onClick={closeToolDetails}
+                >
+                    <div
+                        className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden"
+                        onClick={(event) => event.stopPropagation()}
+                    >
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+                            <h3 className="text-3xl font-bold text-slate-800">Tool Details</h3>
+                            <button
+                                type="button"
+                                onClick={closeToolDetails}
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                                aria-label="Close tool details"
+                            >
+                                <X className="h-5 w-5" />
+                            </button>
+                        </div>
+
+                        <div className="p-5 md:p-6 space-y-4 text-slate-700">
+                            <section className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+                                <div className="flex items-center gap-2 text-slate-800 font-bold text-xl mb-2">
+                                    <Building2 className="h-5 w-5 text-violet-500" />
+                                    Tool Information
+                                </div>
+                                <ul className="space-y-2 pl-5 list-disc text-base">
+                                    <li><span className="font-semibold text-slate-800">Tool Name:</span> {selectedToolDetails.toolName}</li>
+                                    <li><span className="font-semibold text-slate-800">Description:</span> {selectedToolDetails.description}</li>
+                                    <li><span className="font-semibold text-slate-800">Category:</span> {selectedToolDetails.categoryType}</li>
+                                    <li><span className="font-semibold text-slate-800">Vendor:</span> {selectedToolDetails.vendor}</li>
+                                </ul>
+                            </section>
+
+                            <section className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+                                <div className="flex items-center gap-2 text-slate-800 font-bold text-xl mb-2">
+                                    <UserRound className="h-5 w-5 text-violet-500" />
+                                    Ownership
+                                </div>
+                                <ul className="space-y-2 pl-5 text-base">
+                                    <li className="flex items-center gap-2">
+                                        <span className="text-slate-700">•</span>
+                                        <span className="font-semibold text-slate-800">Business Domain Owner:</span>
+                                        <span className="inline-flex items-center gap-2 rounded-full border border-blue-100 bg-gradient-to-r from-blue-50 via-blue-50 to-white px-2.5 py-1 shadow-[inset_0_0_0_1px_rgba(191,219,254,0.35),0_0_14px_-7px_rgba(59,130,246,0.9)]">
+                                            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-[11px] font-bold text-blue-700">
+                                                {String(selectedToolDetails.businessOwner || "").charAt(0).toUpperCase()}
+                                            </span>
+                                            <span>{selectedToolDetails.businessOwner}</span>
+                                        </span>
+                                    </li>
+                                    <li className="flex items-center gap-2">
+                                        <span className="text-slate-700">•</span>
+                                        <span className="font-semibold text-slate-800">IT Owner:</span>
+                                        <span className="inline-flex items-center gap-2 rounded-full border border-blue-100 bg-gradient-to-r from-blue-50 via-blue-50 to-white px-2.5 py-1 shadow-[inset_0_0_0_1px_rgba(191,219,254,0.35),0_0_14px_-7px_rgba(59,130,246,0.9)]">
+                                            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-[11px] font-bold text-blue-700">
+                                                {String(selectedToolDetails.itOwner || "").charAt(0).toUpperCase()}
+                                            </span>
+                                            <span>{selectedToolDetails.itOwner}</span>
+                                        </span>
+                                    </li>
+                                </ul>
+                            </section>
+
+                            <section className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <div className="flex items-center gap-2 text-slate-800 font-bold text-xl mb-2">
+                                            <Shield className="h-5 w-5 text-amber-500" />
+                                            Tool Compliance &amp; Risk
+                                        </div>
+                                        <ul className="space-y-2 pl-5 list-disc text-base">
+                                            <li>
+                                                <span className="font-semibold text-slate-800">TPRM Status:</span>
+                                                <span className={`ml-2 inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${
+                                                    selectedToolDetails.tprmStatus === "Approved"
+                                                        ? "bg-emerald-100 text-emerald-700"
+                                                        : "bg-slate-100 text-slate-700"
+                                                }`}>
+                                                    {selectedToolDetails.tprmStatus}
+                                                </span>
+                                            </li>
+                                            <li>
+                                                <span className="font-semibold text-slate-800">Risk Level:</span>
+                                                <span className={`ml-2 inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${
+                                                    selectedToolDetails.riskLevel === "High"
+                                                        ? "bg-red-100 text-red-700"
+                                                        : selectedToolDetails.riskLevel === "Medium"
+                                                            ? "bg-orange-100 text-orange-700"
+                                                            : "bg-emerald-100 text-emerald-700"
+                                                }`}>
+                                                    {selectedToolDetails.riskLevel}
+                                                </span>
+                                            </li>
+                                        </ul>
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-2 text-slate-800 font-bold text-xl mb-2">
+                                            <CalendarDays className="h-5 w-5 text-blue-500" />
+                                            Lifecycle
+                                        </div>
+                                        <ul className="space-y-2 pl-5 list-disc text-base">
+                                            <li><span className="font-semibold text-slate-800">Created Date:</span> {selectedToolDetails.createdDate}</li>
+                                            <li><span className="font-semibold text-slate-800">Last Certified Date:</span> {selectedToolDetails.lastCertifiedDate}</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <div className="flex justify-center pt-1">
+                                <button
+                                    type="button"
+                                    onClick={closeToolDetails}
+                                    className="min-w-32 rounded-xl border border-blue-200 bg-blue-50 px-6 py-2.5 text-base font-semibold text-blue-700 hover:bg-blue-100"
+                                >
+                                    Close
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}
