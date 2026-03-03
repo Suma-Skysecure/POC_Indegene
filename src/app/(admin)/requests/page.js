@@ -3,10 +3,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Table from '@/components/Table';
 import RequestDetailsSidebar from '@/components/RequestDetailsSidebar';
-import { Search, Filter, Download, Clock, CheckCircle, Hourglass, AlertTriangle, CheckSquare, XSquare, Trash2 } from 'lucide-react';
+import { Search, Filter, Download, Clock, CheckCircle, Hourglass, AlertTriangle, CheckSquare, XSquare, Trash2, X } from 'lucide-react';
 import clsx from 'clsx';
 import Link from 'next/link';
 import { loadRequests, persistRequests } from '@/lib/requestStore';
+import { getCatalogLicenseMetricsByPosition } from '@/lib/licenseMetrics';
 
 const REQUESTS_API_URL = process.env.NEXT_PUBLIC_REQUESTS_API_URL || 'http://localhost:5000/requests';
 const REQUESTS_API_FALLBACKS = [
@@ -15,6 +16,8 @@ const REQUESTS_API_FALLBACKS = [
     'http://localhost:5000/requests',
     'http://localhost:5000/api/requests',
 ];
+const BUSINESS_DOMAIN_OWNERS = ['Jai Kumar', 'Pranav Sharma', 'Shravan Chandra', 'Aarati Daivan', 'Maanya Kumari'];
+const IT_DOMAIN_OWNERS = ['John', 'Saara Mathew', 'Shwetha Verma', 'Maanav Gupta', 'Manikantan'];
 
 const formatDisplayDate = (value) => {
     const date = new Date(value || Date.now());
@@ -36,6 +39,13 @@ const extractRequestNumber = (id = '') => {
     const match = String(id).match(/(\d+)/);
     return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
 };
+
+const normalizeToolName = (value = '') =>
+    String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .replace(/[^a-z0-9]+/g, '');
 
 const formatUserNameFromEmail = (value = '') => {
     const localPart = String(value).split('@')[0] || '';
@@ -126,6 +136,11 @@ export default function RequestsPage() {
     const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
     const [currentPage, setCurrentPage] = useState(1);
     const [activeApiUrl, setActiveApiUrl] = useState(REQUESTS_API_URL);
+    const [modalLicenseStats, setModalLicenseStats] = useState({ total: 0, used: 0, available: 0, loading: false });
+    const [stakeholdersByRequest, setStakeholdersByRequest] = useState({});
+    const [businessValidationByRequest, setBusinessValidationByRequest] = useState({});
+    const [tprmEvaluationByRequest, setTprmEvaluationByRequest] = useState({});
+    const [procurementTrackingByRequest, setProcurementTrackingByRequest] = useState({});
     const lastAdminSyncSignatureRef = useRef('');
     const ITEMS_PER_PAGE = 7;
 
@@ -354,6 +369,183 @@ export default function RequestsPage() {
     const closeSidebar = () => {
         setSelectedRequest(null);
     };
+
+    const isSidebarReviewType = (request) => {
+        const normalizedType = String(request?.type || '').toLowerCase();
+        return normalizedType.includes('reuse') || normalizedType.includes('expansion');
+    };
+
+    const getEmptyStakeholderState = () => ({
+        businessDomainOwner: '',
+        itDomainOwner: '',
+        businessDomainOwnerStatus: 'Not Assigned',
+        itDomainOwnerStatus: 'Not Assigned',
+        businessDomainOwnerLocked: false,
+        itDomainOwnerLocked: false,
+    });
+
+    const selectedRequestStakeholders = selectedRequest
+        ? (stakeholdersByRequest[selectedRequest.id] || getEmptyStakeholderState())
+        : null;
+
+    const handleStakeholderChange = (field, value) => {
+        if (!selectedRequest?.id) return;
+        const lockField = field === 'businessDomainOwner' ? 'businessDomainOwnerLocked' : 'itDomainOwnerLocked';
+        if (selectedRequestStakeholders?.[lockField]) return;
+        setStakeholdersByRequest((prev) => ({
+            ...prev,
+            [selectedRequest.id]: {
+                ...(prev[selectedRequest.id] || getEmptyStakeholderState()),
+                [field]: value,
+            },
+        }));
+    };
+
+    const handleStakeholderAction = (ownerKey, action) => {
+        if (!selectedRequest?.id) return;
+        const statusField = ownerKey === 'businessDomainOwner' ? 'businessDomainOwnerStatus' : 'itDomainOwnerStatus';
+        const lockField = ownerKey === 'businessDomainOwner' ? 'businessDomainOwnerLocked' : 'itDomainOwnerLocked';
+        const selectedOwner = selectedRequestStakeholders?.[ownerKey];
+        if (selectedRequestStakeholders?.[lockField]) return;
+        if (!selectedOwner && action === 'Assign') return;
+
+        setStakeholdersByRequest((prev) => ({
+            ...prev,
+            [selectedRequest.id]: {
+                ...(prev[selectedRequest.id] || getEmptyStakeholderState()),
+                [statusField]: action === 'Assign' ? 'Assigned' : action,
+                [lockField]: true,
+            },
+        }));
+    };
+
+    const getStakeholderStatusClasses = (status) => {
+        if (status === 'Approved') return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+        if (status === 'Rejected') return 'bg-red-50 text-red-700 border-red-200';
+        if (status === 'Assigned') return 'bg-blue-50 text-blue-700 border-blue-200';
+        return 'bg-gray-50 text-gray-600 border-gray-200';
+    };
+
+    const getEmptyBusinessValidationState = () => ({
+        roiJustification: '',
+        budgetDetails: '',
+        sponsorInformation: '',
+        financeApproval: '',
+    });
+
+    const selectedRequestBusinessValidation = selectedRequest
+        ? (businessValidationByRequest[selectedRequest.id] || getEmptyBusinessValidationState())
+        : null;
+
+    const handleBusinessValidationChange = (field, value) => {
+        if (!selectedRequest?.id) return;
+        setBusinessValidationByRequest((prev) => ({
+            ...prev,
+            [selectedRequest.id]: {
+                ...(prev[selectedRequest.id] || getEmptyBusinessValidationState()),
+                [field]: value,
+            },
+        }));
+    };
+
+    const getEmptyTprmEvaluationState = () => ({
+        vendorName: '',
+        riskLevel: '',
+        complianceStatus: '',
+        securityApproval: '',
+    });
+
+    const selectedRequestTprmEvaluation = selectedRequest
+        ? (tprmEvaluationByRequest[selectedRequest.id] || getEmptyTprmEvaluationState())
+        : null;
+
+    const handleTprmEvaluationChange = (field, value) => {
+        if (!selectedRequest?.id) return;
+        setTprmEvaluationByRequest((prev) => ({
+            ...prev,
+            [selectedRequest.id]: {
+                ...(prev[selectedRequest.id] || getEmptyTprmEvaluationState()),
+                [field]: value,
+            },
+        }));
+    };
+
+    const getEmptyProcurementTrackingState = () => ({
+        msa: false,
+        dpa: false,
+        po: false,
+    });
+
+    const selectedRequestProcurementTracking = selectedRequest
+        ? (procurementTrackingByRequest[selectedRequest.id] || getEmptyProcurementTrackingState())
+        : null;
+
+    const handleProcurementTrackingChange = (field, checked) => {
+        if (!selectedRequest?.id) return;
+        setProcurementTrackingByRequest((prev) => ({
+            ...prev,
+            [selectedRequest.id]: {
+                ...(prev[selectedRequest.id] || getEmptyProcurementTrackingState()),
+                [field]: checked,
+            },
+        }));
+    };
+
+    useEffect(() => {
+        const controller = new AbortController();
+
+        const loadModalLicenseStats = async () => {
+            if (!selectedRequest || isSidebarReviewType(selectedRequest)) {
+                setModalLicenseStats({ total: 0, used: 0, available: 0, loading: false });
+                return;
+            }
+
+            const requestedTool = String(selectedRequest.requestOverview?.tool || selectedRequest.tool || '').trim();
+            if (!requestedTool) {
+                setModalLicenseStats({ total: 0, used: 0, available: 0, loading: false });
+                return;
+            }
+
+            try {
+                setModalLicenseStats((prev) => ({ ...prev, loading: true }));
+                const params = new URLSearchParams({
+                    q: requestedTool,
+                    sort: 'rowIndex',
+                    order: 'asc',
+                    limit: '100',
+                    offset: '0',
+                });
+                const response = await fetch(`/api/software?${params.toString()}`, {
+                    signal: controller.signal,
+                    cache: 'no-store',
+                });
+                if (!response.ok) throw new Error(`Request failed with status ${response.status}`);
+                const payload = await response.json();
+                const items = Array.isArray(payload.items) ? payload.items : [];
+                const requestedKey = normalizeToolName(requestedTool);
+                const matched = items.find((item) => normalizeToolName(item.softwareName) === requestedKey);
+
+                if (!matched) {
+                    setModalLicenseStats({ total: 0, used: 0, available: 0, loading: false });
+                    return;
+                }
+
+                const metrics = getCatalogLicenseMetricsByPosition(matched.rowIndex);
+                setModalLicenseStats({
+                    total: metrics.total,
+                    used: metrics.used,
+                    available: metrics.available,
+                    loading: false,
+                });
+            } catch (error) {
+                if (error.name === 'AbortError') return;
+                setModalLicenseStats({ total: 0, used: 0, available: 0, loading: false });
+            }
+        };
+
+        void loadModalLicenseStats();
+        return () => controller.abort();
+    }, [selectedRequest]);
 
     // Filter Logic
     const filteredByTab = currentRequests.filter(item => {
@@ -751,15 +943,351 @@ export default function RequestsPage() {
                     </div>
                 </div>
             </div>
-            {/* Request Details Sidebar */}
+            {/* Request Details Sidebar for Reuse/Expansion */}
             <RequestDetailsSidebar
-                isOpen={!!selectedRequest}
+                isOpen={!!selectedRequest && isSidebarReviewType(selectedRequest)}
                 onClose={closeSidebar}
                 request={selectedRequest}
                 onApprove={handleApprove}
                 onReject={handleReject}
                 showActions={true}
             />
+
+            {/* New Request Popup */}
+            {selectedRequest && !isSidebarReviewType(selectedRequest) && (
+                <div className="fixed inset-0 z-[90] bg-black/35 backdrop-blur-[1px] flex items-center justify-center p-4" onClick={closeSidebar}>
+                    <div
+                        className="w-full max-w-3xl rounded-2xl bg-white border border-gray-200 shadow-2xl overflow-hidden"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="px-6 py-4 border-b border-gray-200 flex items-start justify-between">
+                            <div>
+                                <h3 className="text-2xl font-bold text-gray-900">Request Details</h3>
+                                <p className="text-sm text-gray-500 mt-1">{selectedRequest.id} • {selectedRequest.date}</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={closeSidebar}
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100"
+                                aria-label="Close request details"
+                            >
+                                <X className="h-5 w-5" />
+                            </button>
+                        </div>
+
+                        <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                                <div className="rounded-xl border border-blue-100 bg-gradient-to-br from-white via-blue-50/60 to-slate-50 p-4">
+                                    <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Requester</p>
+                                    <div className="flex items-center">
+                                        <div className="h-12 w-12 rounded-full bg-blue-100 overflow-hidden mr-3 flex items-center justify-center text-blue-700 font-bold text-sm">
+                                            {String(selectedRequest.requester || '')
+                                                .split(' ')
+                                                .map((n) => n[0])
+                                                .join('')}
+                                        </div>
+                                        <div>
+                                            <p className="font-semibold text-gray-900">{selectedRequest.userName || selectedRequest.requester}</p>
+                                            <p className="text-xs text-gray-500">{selectedRequest.role || 'End User'} • {selectedRequest.department || '-'}</p>
+                                            <p className="text-xs text-gray-500">User Name: {selectedRequest.userName || selectedRequest.requester || '-'}</p>
+                                            <p className="text-xs text-gray-500">User Email: {selectedRequest.userEmail || selectedRequest.formPayload?.userEmail || '-'}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="rounded-xl border border-blue-100 bg-gradient-to-br from-white via-blue-50/60 to-slate-50 p-4">
+                                    <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Overview</p>
+                                    <p><span className="font-semibold text-gray-800">Type:</span> {selectedRequest.requestOverview?.type || 'New Tool Request'}</p>
+                                    <p><span className="font-semibold text-gray-800">Tool:</span> {selectedRequest.requestOverview?.tool || selectedRequest.tool}</p>
+                                    <p><span className="font-semibold text-gray-800">Vendor:</span> {selectedRequest.requestOverview?.vendor || 'TBD'}</p>
+                                    <p><span className="font-semibold text-gray-800">Department:</span> {selectedRequest.requestOverview?.department || selectedRequest.department}</p>
+                                    <p><span className="font-semibold text-gray-800">Licenses:</span> {selectedRequest.requestOverview?.licenses || 'TBD'}</p>
+                                    <p><span className="font-semibold text-gray-800">Timeline:</span> {selectedRequest.requestOverview?.timeline || 'TBD'}</p>
+                                </div>
+                            </div>
+
+                            <div className="rounded-xl border border-blue-100 bg-gradient-to-br from-white via-blue-50/60 to-slate-50 p-4">
+                                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">License & Usage Stats</p>
+                                <div className="grid grid-cols-3 gap-3">
+                                    <div className="rounded-lg border border-blue-100 bg-gradient-to-br from-white to-blue-50/70 p-3 text-center">
+                                        <p className="text-2xl font-bold text-gray-900">{modalLicenseStats.loading ? '-' : modalLicenseStats.total}</p>
+                                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1">Total</p>
+                                    </div>
+                                    <div className="rounded-lg border border-blue-100 bg-gradient-to-br from-white to-blue-50/70 p-3 text-center">
+                                        <p className="text-2xl font-bold text-gray-900">{modalLicenseStats.loading ? '-' : modalLicenseStats.used}</p>
+                                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1">Used</p>
+                                    </div>
+                                    <div className="rounded-lg border border-blue-100 bg-gradient-to-br from-white to-blue-50/70 p-3 text-center">
+                                        <p className="text-2xl font-bold text-blue-700">{modalLicenseStats.loading ? '-' : modalLicenseStats.available}</p>
+                                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1">Available</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="rounded-xl border border-blue-100 bg-gradient-to-br from-white via-blue-50/60 to-slate-50 p-4">
+                                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Use Case</p>
+                                <p className="text-sm text-gray-700">{selectedRequest.useCase || 'No specific use case provided for this tool request.'}</p>
+                            </div>
+
+                            <div className="rounded-xl border border-blue-100 bg-gradient-to-br from-white via-blue-50/60 to-slate-50 p-4">
+                                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Business Justification</p>
+                                <p className="text-sm text-gray-700">{selectedRequest.justification || 'No business justification provided for this tool request.'}</p>
+                            </div>
+
+                            <div className="rounded-xl border border-blue-100 bg-gradient-to-br from-white via-blue-50/60 to-slate-50 p-4">
+                                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Equivalent Tools Found</p>
+                                <div className="space-y-2">
+                                    {(selectedRequest.equivalentTools && selectedRequest.equivalentTools.length > 0) ? (
+                                        selectedRequest.equivalentTools.map((tool, idx) => (
+                                            <div key={idx} className="flex items-center justify-between rounded-lg border border-blue-100 bg-gradient-to-br from-white to-blue-50/70 px-3 py-2">
+                                                <span className="text-sm font-semibold text-gray-800">{tool.name}</span>
+                                                <span className="text-[10px] px-2 py-1 bg-gray-50 text-gray-500 font-bold rounded uppercase tracking-wider border border-gray-100">
+                                                    {tool.status}
+                                                </span>
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div className="text-sm text-gray-400 italic">No equivalent tools found in catalog.</div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="rounded-xl border border-blue-100 bg-gradient-to-br from-white via-blue-50/60 to-slate-50 p-4">
+                                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Stakeholders</p>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Business Domain Owner</label>
+                                        <select
+                                            value={selectedRequestStakeholders?.businessDomainOwner || ''}
+                                            onChange={(e) => handleStakeholderChange('businessDomainOwner', e.target.value)}
+                                            disabled={selectedRequestStakeholders?.businessDomainOwnerLocked}
+                                            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                        >
+                                            <option value="" disabled>Select</option>
+                                            {BUSINESS_DOMAIN_OWNERS.map((owner) => (
+                                                <option key={owner} value={owner}>{owner}</option>
+                                            ))}
+                                        </select>
+                                        <div className="mt-2 flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleStakeholderAction('businessDomainOwner', 'Assign')}
+                                                disabled={!selectedRequestStakeholders?.businessDomainOwner || selectedRequestStakeholders?.businessDomainOwnerLocked}
+                                                className="px-2.5 py-1 rounded-md border border-blue-200 text-blue-700 bg-blue-50 text-xs font-semibold hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                Assign
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleStakeholderAction('businessDomainOwner', 'Approved')}
+                                                disabled={selectedRequestStakeholders?.businessDomainOwnerLocked}
+                                                className="px-2.5 py-1 rounded-md border border-emerald-200 text-emerald-700 bg-emerald-50 text-xs font-semibold hover:bg-emerald-100"
+                                            >
+                                                Approve
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleStakeholderAction('businessDomainOwner', 'Rejected')}
+                                                disabled={selectedRequestStakeholders?.businessDomainOwnerLocked}
+                                                className="px-2.5 py-1 rounded-md border border-red-200 text-red-700 bg-red-50 text-xs font-semibold hover:bg-red-100"
+                                            >
+                                                Reject
+                                            </button>
+                                            <span className={`ml-auto text-[10px] px-2 py-1 rounded border font-bold uppercase tracking-wider ${getStakeholderStatusClasses(selectedRequestStakeholders?.businessDomainOwnerStatus)}`}>
+                                                {selectedRequestStakeholders?.businessDomainOwnerStatus || 'Not Assigned'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">IT Domain Owner</label>
+                                        <select
+                                            value={selectedRequestStakeholders?.itDomainOwner || ''}
+                                            onChange={(e) => handleStakeholderChange('itDomainOwner', e.target.value)}
+                                            disabled={selectedRequestStakeholders?.itDomainOwnerLocked}
+                                            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                        >
+                                            <option value="" disabled>Select</option>
+                                            {IT_DOMAIN_OWNERS.map((owner) => (
+                                                <option key={owner} value={owner}>{owner}</option>
+                                            ))}
+                                        </select>
+                                        <div className="mt-2 flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleStakeholderAction('itDomainOwner', 'Assign')}
+                                                disabled={!selectedRequestStakeholders?.itDomainOwner || selectedRequestStakeholders?.itDomainOwnerLocked}
+                                                className="px-2.5 py-1 rounded-md border border-blue-200 text-blue-700 bg-blue-50 text-xs font-semibold hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                Assign
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleStakeholderAction('itDomainOwner', 'Approved')}
+                                                disabled={selectedRequestStakeholders?.itDomainOwnerLocked}
+                                                className="px-2.5 py-1 rounded-md border border-emerald-200 text-emerald-700 bg-emerald-50 text-xs font-semibold hover:bg-emerald-100"
+                                            >
+                                                Approve
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleStakeholderAction('itDomainOwner', 'Rejected')}
+                                                disabled={selectedRequestStakeholders?.itDomainOwnerLocked}
+                                                className="px-2.5 py-1 rounded-md border border-red-200 text-red-700 bg-red-50 text-xs font-semibold hover:bg-red-100"
+                                            >
+                                                Reject
+                                            </button>
+                                            <span className={`ml-auto text-[10px] px-2 py-1 rounded border font-bold uppercase tracking-wider ${getStakeholderStatusClasses(selectedRequestStakeholders?.itDomainOwnerStatus)}`}>
+                                                {selectedRequestStakeholders?.itDomainOwnerStatus || 'Not Assigned'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="rounded-xl border border-blue-100 bg-gradient-to-br from-white via-blue-50/60 to-slate-50 p-4">
+                                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Business Validation</p>
+                                <div className="space-y-3">
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">ROI Justification</label>
+                                        <textarea
+                                            rows={2}
+                                            value={selectedRequestBusinessValidation?.roiJustification || ''}
+                                            onChange={(e) => handleBusinessValidationChange('roiJustification', e.target.value)}
+                                            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 resize-none"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Budget Details</label>
+                                        <input
+                                            type="text"
+                                            value={selectedRequestBusinessValidation?.budgetDetails || ''}
+                                            onChange={(e) => handleBusinessValidationChange('budgetDetails', e.target.value)}
+                                            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Sponsor Information</label>
+                                        <input
+                                            type="text"
+                                            value={selectedRequestBusinessValidation?.sponsorInformation || ''}
+                                            onChange={(e) => handleBusinessValidationChange('sponsorInformation', e.target.value)}
+                                            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Finance Approval</label>
+                                        <input
+                                            type="text"
+                                            value={selectedRequestBusinessValidation?.financeApproval || ''}
+                                            onChange={(e) => handleBusinessValidationChange('financeApproval', e.target.value)}
+                                            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="rounded-xl border border-blue-100 bg-gradient-to-br from-white via-blue-50/60 to-slate-50 p-4">
+                                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">TPRM Evaluation (Vendor Risk Assessment)</p>
+                                <div className="space-y-3">
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Vendor Name</label>
+                                        <input
+                                            type="text"
+                                            value={selectedRequestTprmEvaluation?.vendorName || ''}
+                                            onChange={(e) => handleTprmEvaluationChange('vendorName', e.target.value)}
+                                            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Risk Level</label>
+                                        <select
+                                            value={selectedRequestTprmEvaluation?.riskLevel || ''}
+                                            onChange={(e) => handleTprmEvaluationChange('riskLevel', e.target.value)}
+                                            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                        >
+                                            <option value="" disabled>Select</option>
+                                            <option value="Low">Low</option>
+                                            <option value="Medium">Medium</option>
+                                            <option value="High">High</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Compliance Status</label>
+                                        <input
+                                            type="text"
+                                            value={selectedRequestTprmEvaluation?.complianceStatus || ''}
+                                            onChange={(e) => handleTprmEvaluationChange('complianceStatus', e.target.value)}
+                                            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Security Approval</label>
+                                        <input
+                                            type="text"
+                                            value={selectedRequestTprmEvaluation?.securityApproval || ''}
+                                            onChange={(e) => handleTprmEvaluationChange('securityApproval', e.target.value)}
+                                            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="rounded-xl border border-blue-100 bg-gradient-to-br from-white via-blue-50/60 to-slate-50 p-4">
+                                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Procurement & Onboarding</p>
+                                <p className="text-xs font-semibold text-gray-500 mb-3">Tracking</p>
+                                <div className="space-y-2.5">
+                                    <label className="flex items-center gap-2 text-sm text-gray-700">
+                                        <input
+                                            type="checkbox"
+                                            checked={!!selectedRequestProcurementTracking?.msa}
+                                            onChange={(e) => handleProcurementTrackingChange('msa', e.target.checked)}
+                                            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                        />
+                                        MSA (Master Service Agreement)
+                                    </label>
+                                    <label className="flex items-center gap-2 text-sm text-gray-700">
+                                        <input
+                                            type="checkbox"
+                                            checked={!!selectedRequestProcurementTracking?.dpa}
+                                            onChange={(e) => handleProcurementTrackingChange('dpa', e.target.checked)}
+                                            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                        />
+                                        DPA (Data Processing Agreement)
+                                    </label>
+                                    <label className="flex items-center gap-2 text-sm text-gray-700">
+                                        <input
+                                            type="checkbox"
+                                            checked={!!selectedRequestProcurementTracking?.po}
+                                            onChange={(e) => handleProcurementTrackingChange('po', e.target.checked)}
+                                            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                        />
+                                        PO (Purchase Order)
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="px-6 py-4 border-t border-gray-100 bg-white flex items-center justify-end gap-3">
+                            <button
+                                type="button"
+                                onClick={closeSidebar}
+                                className="px-4 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 font-semibold text-sm"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    handleApprove(selectedRequest.id);
+                                    closeSidebar();
+                                }}
+                                className="px-4 py-2 rounded-lg bg-blue-700 hover:bg-blue-800 text-white font-semibold text-sm"
+                            >
+                                Submit
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Toast Notification */}
             {toast.show && (

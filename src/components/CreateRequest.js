@@ -14,6 +14,15 @@ function deriveRequestType(tool = {}) {
     return treatedAsExistingSoftware ? 'new_license' : 'new_software';
 }
 
+function deriveToolCategoryType(tool = {}) {
+    const softwareType = String(tool.softwareType || '').toLowerCase();
+    const category = String(tool.category || '').toLowerCase();
+    if (softwareType.includes('web')) return 'Web';
+    if (softwareType.includes('desktop')) return 'On-Prem';
+    if (category.includes('internet')) return 'Web';
+    return 'SaaS';
+}
+
 export default function CreateRequest() {
     const searchParams = useSearchParams();
     const requestedType = String(searchParams.get('requestType') || '').trim();
@@ -23,6 +32,10 @@ export default function CreateRequest() {
             category: searchParams.get('category'),
             licenseType: searchParams.get('licenseType'),
         });
+    const categoryFromQuery = deriveToolCategoryType({
+        category: searchParams.get('category'),
+        softwareType: searchParams.get('softwareType'),
+    });
     const initialRequiredLicenses = Number.parseInt(String(searchParams.get('users') || ''), 10);
 
     const [requestType, setRequestType] = useState(requestTypeFromQuery);
@@ -37,6 +50,7 @@ export default function CreateRequest() {
         toolName: String(searchParams.get('toolName') || '').trim(),
         useCase: String(searchParams.get('useCase') || '').trim(),
         vendor: String(searchParams.get('vendor') || '').trim(),
+        category: String(searchParams.get('toolName') || '').trim() ? categoryFromQuery : '',
         requiredLicenses: Number.isFinite(initialRequiredLicenses) && initialRequiredLicenses > 0
             ? initialRequiredLicenses
             : 1,
@@ -103,6 +117,7 @@ export default function CreateRequest() {
                     manufacturer: item.manufacturer || '',
                     networkInstallations: item.networkInstallations,
                     category: item.category || '',
+                    softwareType: item.softwareType || '',
                     licenseType: item.licenseType || '',
                 }));
 
@@ -148,6 +163,7 @@ export default function CreateRequest() {
             ...prev,
             toolName: tool.softwareName || prev.toolName,
             vendor: tool.manufacturer || prev.vendor,
+            category: deriveToolCategoryType(tool),
             requiredLicenses: Number.isFinite(Number(tool.networkInstallations)) && Number(tool.networkInstallations) > 0
                 ? Number(tool.networkInstallations)
                 : prev.requiredLicenses,
@@ -183,6 +199,7 @@ export default function CreateRequest() {
             toolName: '',
             useCase: '',
             vendor: '',
+            category: '',
             requiredLicenses: 1,
             timeline: '',
             department: '',
@@ -293,6 +310,19 @@ export default function CreateRequest() {
                                     onChange={(e) => handleFieldChange('vendor', e.target.value)}
                                     placeholder="e.g. Notion Labs Inc."
                                     className="w-full bg-gray-50/30 border border-gray-100 rounded-xl px-4 py-3 text-gray-900 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-2.5">
+                                <label className="block text-gray-500 text-xs font-semibold uppercase tracking-wider">Category</label>
+                                <input
+                                    type="text"
+                                    value={formData.category}
+                                    readOnly
+                                    placeholder="Auto-filled when a tool/software is selected"
+                                    className="w-full bg-blue-50/50 border border-blue-100 rounded-xl px-4 py-3 text-gray-900 font-medium focus:outline-none"
                                 />
                             </div>
                         </div>
