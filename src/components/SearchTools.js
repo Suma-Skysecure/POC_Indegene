@@ -359,7 +359,7 @@ export default function SearchTools() {
                                                     <Shield className="h-3 w-3" />
                                                 )}
                                             </span>
-                                            <span className="leading-5 group-hover:underline">{tool.softwareName}</span>
+                                            <span className="leading-5 group-hover:underline group-hover:text-blue-700">{tool.softwareName}</span>
                                         </Link>
                                     </td>
                                     <td className="px-4 py-3.5 text-xs font-medium text-slate-600">{tool.version}</td>
@@ -404,7 +404,7 @@ export default function SearchTools() {
                                 <Link
                                     key={tool.id}
                                     href={buildRequestLink(tool)}
-                                    className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm hover:shadow-md transition-shadow"
+                                    className="group bg-white rounded-xl border border-slate-200 p-4 shadow-sm hover:shadow-md transition-shadow"
                                 >
                                     <div className="flex items-start gap-3">
                                         <span className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-700 overflow-hidden">
@@ -424,7 +424,7 @@ export default function SearchTools() {
                                             )}
                                         </span>
                                         <div className="min-w-0">
-                                            <p className="text-sm font-semibold text-slate-900 truncate">{tool.softwareName}</p>
+                                            <p className="text-sm font-semibold text-slate-900 truncate group-hover:text-blue-700 group-hover:underline">{tool.softwareName}</p>
                                             <p className="text-xs text-slate-500">Version {tool.version}</p>
                                             <p className="text-xs text-slate-500 truncate">{tool.manufacturer}</p>
                                         </div>

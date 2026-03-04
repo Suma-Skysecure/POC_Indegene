@@ -313,6 +313,57 @@ export function addRuntimeCatalogItem(payload = {}) {
         networkInstallations,
         managedInstallations,
         softwareType: String(payload.softwareType || "-").trim() || "-",
+        ...(Object.prototype.hasOwnProperty.call(payload, "businessDomainOwner")
+            ? { businessDomainOwner: String(payload.businessDomainOwner || "").trim() }
+            : {}),
+        ...(Object.prototype.hasOwnProperty.call(payload, "itDomainOwner")
+            ? { itDomainOwner: String(payload.itDomainOwner || "").trim() }
+            : {}),
+        ...(Object.prototype.hasOwnProperty.call(payload, "riskLevel")
+            ? { riskLevel: String(payload.riskLevel || "").trim() }
+            : {}),
+        ...(Object.prototype.hasOwnProperty.call(payload, "complianceStatus")
+            ? { complianceStatus: String(payload.complianceStatus || "").trim() }
+            : {}),
+        ...(Object.prototype.hasOwnProperty.call(payload, "securityApproval")
+            ? { securityApproval: String(payload.securityApproval || "").trim() }
+            : {}),
+        ...(Object.prototype.hasOwnProperty.call(payload, "securityApprovalStatus")
+            ? { securityApprovalStatus: String(payload.securityApprovalStatus || "").trim() }
+            : {}),
+        ...(Object.prototype.hasOwnProperty.call(payload, "financeApproval")
+            ? { financeApproval: String(payload.financeApproval || "").trim() }
+            : {}),
+        ...(Object.prototype.hasOwnProperty.call(payload, "financeApprovalStatus")
+            ? { financeApprovalStatus: String(payload.financeApprovalStatus || "").trim() }
+            : {}),
+        ...(Object.prototype.hasOwnProperty.call(payload, "roiJustification")
+            ? { roiJustification: String(payload.roiJustification || "").trim() }
+            : {}),
+        ...(Object.prototype.hasOwnProperty.call(payload, "budgetDetails")
+            ? { budgetDetails: String(payload.budgetDetails || "").trim() }
+            : {}),
+        ...(Object.prototype.hasOwnProperty.call(payload, "sponsorInformation")
+            ? { sponsorInformation: String(payload.sponsorInformation || "").trim() }
+            : {}),
+        ...(Object.prototype.hasOwnProperty.call(payload, "msa")
+            ? { msa: Boolean(payload.msa) }
+            : {}),
+        ...(Object.prototype.hasOwnProperty.call(payload, "dpa")
+            ? { dpa: Boolean(payload.dpa) }
+            : {}),
+        ...(Object.prototype.hasOwnProperty.call(payload, "po")
+            ? { po: Boolean(payload.po) }
+            : {}),
+        ...(Object.prototype.hasOwnProperty.call(payload, "useCase")
+            ? { useCase: String(payload.useCase || "").trim() }
+            : {}),
+        ...(Object.prototype.hasOwnProperty.call(payload, "businessJustification")
+            ? { businessJustification: String(payload.businessJustification || "").trim() }
+            : {}),
+        ...(Object.prototype.hasOwnProperty.call(payload, "platform")
+            ? { platform: String(payload.platform || "").trim() }
+            : {}),
     };
 
     runtimeState.runtimeCatalogItems = [item, ...runtimeState.runtimeCatalogItems];

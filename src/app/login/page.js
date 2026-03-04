@@ -201,7 +201,7 @@ export default function LoginPage() {
             <h1 className="text-4xl lg:text-5xl font-bold mb-6 leading-tight drop-shadow-lg">
               Welcome to <br />
               <span className="text-white">
-                Indegene Admin Portal
+                Indegene Software Portal
               </span>
             </h1>
             <p className="text-gray-200 text-lg leading-relaxed max-w-lg drop-shadow-md mb-8">
