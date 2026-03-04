@@ -278,24 +278,29 @@ export default function CatalogPage() {
     const getToolDetails = (tool) => {
         if (!tool) return null;
         const seed = hashString(`${tool.id}-${tool.softwareName}-${tool.manufacturer}`);
-        const businessOwner = BUSINESS_DOMAIN_OWNERS[seed % BUSINESS_DOMAIN_OWNERS.length];
-        const itOwner = IT_OWNERS[seed % IT_OWNERS.length];
-        const categoryType = getToolCategoryType(tool);
+        const businessOwner = String(tool.businessDomainOwner || "").trim() || BUSINESS_DOMAIN_OWNERS[seed % BUSINESS_DOMAIN_OWNERS.length];
+        const itOwner = String(tool.itDomainOwner || "").trim() || IT_OWNERS[seed % IT_OWNERS.length];
+        const categoryType = String(tool.platform || "").trim() || getToolCategoryType(tool);
         const isApproved = String(tool.category || "").toLowerCase().includes("approved");
-        const riskLevel = computeRisk(tool).riskLevel;
+        const riskLevel = String(tool.riskLevel || "").trim() || computeRisk(tool).riskLevel;
 
         const createdDate = new Date(2023 + (seed % 2), seed % 12, (seed % 28) + 1);
         const lastCertifiedDate = new Date(createdDate);
         lastCertifiedDate.setMonth(createdDate.getMonth() + 6 + (seed % 5));
 
+        const toolDescription = String(tool.useCase || "").trim();
+        const tprmStatus = String(tool.complianceStatus || "").trim()
+            ? "Approved"
+            : (isApproved ? "Approved" : "Pending");
+
         return {
             toolName: tool.softwareName || "-",
-            description: `${tool.softwareName || "This tool"} is a ${categoryType} platform used in enterprise workflows${tool.softwareType ? ` for ${tool.softwareType}` : ""}.`,
+            description: toolDescription || `${tool.softwareName || "This tool"} is a ${categoryType} platform used in enterprise workflows${tool.softwareType ? ` for ${tool.softwareType}` : ""}.`,
             categoryType,
             vendor: tool.manufacturer || "-",
             businessOwner,
             itOwner,
-            tprmStatus: isApproved ? "Approved" : "Pending",
+            tprmStatus,
             riskLevel,
             createdDate: formatDate(createdDate),
             lastCertifiedDate: formatDate(lastCertifiedDate),
@@ -685,6 +690,12 @@ export default function CatalogPage() {
                                 </div>
                                 <div className="mt-4 space-y-1.5 text-xs text-slate-600">
                                     <div className="flex justify-between"><span>Type:</span><span className="font-semibold text-slate-800">{tool.softwareType}</span></div>
+                                    {tool.complianceStatus && (
+                                        <div className="flex justify-between"><span>Compliance:</span><span className="font-semibold text-slate-800">{tool.complianceStatus}</span></div>
+                                    )}
+                                    {tool.riskLevel && (
+                                        <div className="flex justify-between"><span>Risk:</span><span className="font-semibold text-slate-800">{tool.riskLevel}</span></div>
+                                    )}
                                 </div>
                             </div>
                         );
@@ -923,7 +934,7 @@ export default function CatalogPage() {
                                 <ul className="space-y-2 pl-5 list-disc text-base">
                                     <li><span className="font-semibold text-slate-800">Tool Name:</span> {selectedToolDetails.toolName}</li>
                                     <li><span className="font-semibold text-slate-800">Description:</span> {selectedToolDetails.description}</li>
-                                    <li><span className="font-semibold text-slate-800">Category:</span> {selectedToolDetails.categoryType}</li>
+                                    <li><span className="font-semibold text-slate-800">Platform:</span> {selectedToolDetails.categoryType}</li>
                                     <li><span className="font-semibold text-slate-800">Vendor:</span> {selectedToolDetails.vendor}</li>
                                 </ul>
                             </section>

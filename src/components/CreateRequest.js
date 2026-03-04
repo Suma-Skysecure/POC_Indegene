@@ -316,7 +316,7 @@ export default function CreateRequest() {
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-2.5">
-                                <label className="block text-gray-500 text-xs font-semibold uppercase tracking-wider">Category</label>
+                                <label className="block text-gray-500 text-xs font-semibold uppercase tracking-wider">Platform</label>
                                 <input
                                     type="text"
                                     value={formData.category}

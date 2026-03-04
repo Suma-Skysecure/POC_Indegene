@@ -16,6 +16,8 @@ const REQUESTS_API_FALLBACKS = [
     'http://localhost:5000/requests',
     'http://localhost:5000/api/requests',
 ];
+const SECURITY_APPROVAL_MEMBERS = ['Amit Sharma', 'Priya Nair', 'Rahul Verma', 'Sneha Reddy', 'Arjun Patel'];
+const FINANCE_APPROVAL_MEMBERS = ['Neha Gupta', 'Rohit Kumar', 'Ananya Iyer', 'Vikram Singh', 'Kavya Menon'];
 const BUSINESS_DOMAIN_OWNERS = ['Jai Kumar', 'Pranav Sharma', 'Shravan Chandra', 'Aarati Daivan', 'Maanya Kumari'];
 const IT_DOMAIN_OWNERS = ['John', 'Saara Mathew', 'Shwetha Verma', 'Maanav Gupta', 'Manikantan'];
 
@@ -38,6 +40,16 @@ const mapRequestType = (requestType = '') => {
 const extractRequestNumber = (id = '') => {
     const match = String(id).match(/(\d+)/);
     return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+};
+
+const parseRequiredLicenses = (request = {}) => {
+    const fromPayload = Number(request?.formPayload?.requiredLicenses);
+    if (Number.isFinite(fromPayload) && fromPayload > 0) return Math.trunc(fromPayload);
+
+    const fromOverview = Number.parseInt(String(request?.requestOverview?.licenses || '').replace(/\D+/g, ''), 10);
+    if (Number.isFinite(fromOverview) && fromOverview > 0) return fromOverview;
+
+    return 1;
 };
 
 const normalizeToolName = (value = '') =>
@@ -346,6 +358,97 @@ export default function RequestsPage() {
         showNotification(`${idsToDelete.length} requests deleted successfully!`, 'error');
     };
 
+    const handleSubmitNewRequestReview = async () => {
+        if (!selectedRequest || isSidebarReviewType(selectedRequest)) return;
+
+        const stakeholders = selectedRequestStakeholders || getEmptyStakeholderState();
+        const businessValidation = selectedRequestBusinessValidation || getEmptyBusinessValidationState();
+        const tprmEvaluation = selectedRequestTprmEvaluation || getEmptyTprmEvaluationState();
+        const procurement = selectedRequestProcurementTracking || getEmptyProcurementTrackingState();
+
+        const requiredChecks = [
+            selectedRequest.requestOverview?.tool || selectedRequest.tool,
+            selectedRequest.requestOverview?.vendor || selectedRequest.formPayload?.vendor,
+            selectedRequest.useCase,
+            selectedRequest.justification,
+            stakeholders.businessDomainOwner,
+            stakeholders.itDomainOwner,
+            stakeholders.businessDomainOwnerStatus !== 'Not Assigned',
+            stakeholders.itDomainOwnerStatus !== 'Not Assigned',
+            businessValidation.roiJustification?.trim(),
+            businessValidation.budgetDetails?.trim(),
+            businessValidation.sponsorInformation?.trim(),
+            businessValidation.financeApproval,
+            businessValidation.financeApprovalStatus !== 'Not Assigned',
+            tprmEvaluation.vendorName?.trim(),
+            tprmEvaluation.category,
+            tprmEvaluation.riskLevel,
+            tprmEvaluation.complianceStatus,
+            tprmEvaluation.securityApproval,
+            tprmEvaluation.securityApprovalStatus !== 'Not Assigned',
+            procurement.msa,
+            procurement.dpa,
+            procurement.po,
+        ];
+
+        if (requiredChecks.some((item) => !item)) {
+            showNotification('Please complete all required details before submitting.', 'error');
+            return;
+        }
+
+        const toolName = String(selectedRequest.requestOverview?.tool || selectedRequest.tool || '').trim();
+        const vendor = String(selectedRequest.requestOverview?.vendor || selectedRequest.formPayload?.vendor || '').trim();
+        const category = String(tprmEvaluation.category || '').trim();
+        const mappedSoftwareType = category === 'Web'
+            ? 'Web Apps'
+            : category === 'On-Prem'
+                ? 'Desktop Apps'
+                : 'SaaS';
+
+        try {
+            const response = await fetch('/api/software', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    softwareName: toolName,
+                    version: '1.0',
+                    manufacturer: vendor,
+                    networkInstallations: parseRequiredLicenses(selectedRequest),
+                    managedInstallations: 0,
+                    licenseType: 'Commercial',
+                    category: 'Approved Softwares',
+                    softwareType: mappedSoftwareType,
+                    platform: category,
+                    businessDomainOwner: stakeholders.businessDomainOwner,
+                    itDomainOwner: stakeholders.itDomainOwner,
+                    riskLevel: tprmEvaluation.riskLevel,
+                    complianceStatus: tprmEvaluation.complianceStatus,
+                    securityApproval: tprmEvaluation.securityApproval,
+                    securityApprovalStatus: tprmEvaluation.securityApprovalStatus,
+                    financeApproval: businessValidation.financeApproval,
+                    financeApprovalStatus: businessValidation.financeApprovalStatus,
+                    roiJustification: businessValidation.roiJustification,
+                    budgetDetails: businessValidation.budgetDetails,
+                    sponsorInformation: businessValidation.sponsorInformation,
+                    msa: procurement.msa,
+                    dpa: procurement.dpa,
+                    po: procurement.po,
+                    useCase: selectedRequest.useCase || '',
+                    businessJustification: selectedRequest.justification || '',
+                }),
+            });
+            if (!response.ok) {
+                throw new Error(`Failed to add tool to catalog: ${response.status}`);
+            }
+
+            await handleApprove(selectedRequest.id);
+            closeSidebar();
+        } catch (error) {
+            console.error('Failed to submit new request review:', error);
+            showNotification('Failed to submit review and add tool to catalog.', 'error');
+        }
+    };
+
     const toggleSelectAll = () => {
         const pageIds = paginatedData.map((r) => r.id);
         const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selectedIds.includes(id));
@@ -407,7 +510,7 @@ export default function RequestsPage() {
         const lockField = ownerKey === 'businessDomainOwner' ? 'businessDomainOwnerLocked' : 'itDomainOwnerLocked';
         const selectedOwner = selectedRequestStakeholders?.[ownerKey];
         if (selectedRequestStakeholders?.[lockField]) return;
-        if (!selectedOwner && action === 'Assign') return;
+        if (!selectedOwner) return;
 
         setStakeholdersByRequest((prev) => ({
             ...prev,
@@ -431,6 +534,8 @@ export default function RequestsPage() {
         budgetDetails: '',
         sponsorInformation: '',
         financeApproval: '',
+        financeApprovalStatus: 'Not Assigned',
+        financeApprovalLocked: false,
     });
 
     const selectedRequestBusinessValidation = selectedRequest
@@ -439,6 +544,7 @@ export default function RequestsPage() {
 
     const handleBusinessValidationChange = (field, value) => {
         if (!selectedRequest?.id) return;
+        if (field === 'financeApproval' && selectedRequestBusinessValidation?.financeApprovalLocked) return;
         setBusinessValidationByRequest((prev) => ({
             ...prev,
             [selectedRequest.id]: {
@@ -448,11 +554,29 @@ export default function RequestsPage() {
         }));
     };
 
+    const handleFinanceApprovalAction = (action) => {
+        if (!selectedRequest?.id) return;
+        if (selectedRequestBusinessValidation?.financeApprovalLocked) return;
+        if (!selectedRequestBusinessValidation?.financeApproval) return;
+
+        setBusinessValidationByRequest((prev) => ({
+            ...prev,
+            [selectedRequest.id]: {
+                ...(prev[selectedRequest.id] || getEmptyBusinessValidationState()),
+                financeApprovalStatus: action === 'Assign' ? 'Assigned' : action,
+                financeApprovalLocked: true,
+            },
+        }));
+    };
+
     const getEmptyTprmEvaluationState = () => ({
         vendorName: '',
+        category: '',
         riskLevel: '',
         complianceStatus: '',
         securityApproval: '',
+        securityApprovalStatus: 'Not Assigned',
+        securityApprovalLocked: false,
     });
 
     const selectedRequestTprmEvaluation = selectedRequest
@@ -461,11 +585,27 @@ export default function RequestsPage() {
 
     const handleTprmEvaluationChange = (field, value) => {
         if (!selectedRequest?.id) return;
+        if (field === 'securityApproval' && selectedRequestTprmEvaluation?.securityApprovalLocked) return;
         setTprmEvaluationByRequest((prev) => ({
             ...prev,
             [selectedRequest.id]: {
                 ...(prev[selectedRequest.id] || getEmptyTprmEvaluationState()),
                 [field]: value,
+            },
+        }));
+    };
+
+    const handleSecurityApprovalAction = (action) => {
+        if (!selectedRequest?.id) return;
+        if (selectedRequestTprmEvaluation?.securityApprovalLocked) return;
+        if (!selectedRequestTprmEvaluation?.securityApproval) return;
+
+        setTprmEvaluationByRequest((prev) => ({
+            ...prev,
+            [selectedRequest.id]: {
+                ...(prev[selectedRequest.id] || getEmptyTprmEvaluationState()),
+                securityApprovalStatus: action === 'Assign' ? 'Assigned' : action,
+                securityApprovalLocked: true,
             },
         }));
     };
@@ -978,7 +1118,7 @@ export default function RequestsPage() {
                         <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                                 <div className="rounded-xl border border-blue-100 bg-gradient-to-br from-white via-blue-50/60 to-slate-50 p-4">
-                                    <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Requester</p>
+                                    <p className="text-base font-extrabold text-[#0B3B91] uppercase tracking-[0.08em] mb-2">Requester</p>
                                     <div className="flex items-center">
                                         <div className="h-12 w-12 rounded-full bg-blue-100 overflow-hidden mr-3 flex items-center justify-center text-blue-700 font-bold text-sm">
                                             {String(selectedRequest.requester || '')
@@ -995,7 +1135,7 @@ export default function RequestsPage() {
                                     </div>
                                 </div>
                                 <div className="rounded-xl border border-blue-100 bg-gradient-to-br from-white via-blue-50/60 to-slate-50 p-4">
-                                    <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Overview</p>
+                                    <p className="text-base font-extrabold text-[#0B3B91] uppercase tracking-[0.08em] mb-2">Overview</p>
                                     <p><span className="font-semibold text-gray-800">Type:</span> {selectedRequest.requestOverview?.type || 'New Tool Request'}</p>
                                     <p><span className="font-semibold text-gray-800">Tool:</span> {selectedRequest.requestOverview?.tool || selectedRequest.tool}</p>
                                     <p><span className="font-semibold text-gray-800">Vendor:</span> {selectedRequest.requestOverview?.vendor || 'TBD'}</p>
@@ -1006,7 +1146,7 @@ export default function RequestsPage() {
                             </div>
 
                             <div className="rounded-xl border border-blue-100 bg-gradient-to-br from-white via-blue-50/60 to-slate-50 p-4">
-                                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">License & Usage Stats</p>
+                                <p className="text-base font-extrabold text-[#0B3B91] uppercase tracking-[0.08em] mb-3">License & Usage Stats</p>
                                 <div className="grid grid-cols-3 gap-3">
                                     <div className="rounded-lg border border-blue-100 bg-gradient-to-br from-white to-blue-50/70 p-3 text-center">
                                         <p className="text-2xl font-bold text-gray-900">{modalLicenseStats.loading ? '-' : modalLicenseStats.total}</p>
@@ -1024,17 +1164,17 @@ export default function RequestsPage() {
                             </div>
 
                             <div className="rounded-xl border border-blue-100 bg-gradient-to-br from-white via-blue-50/60 to-slate-50 p-4">
-                                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Use Case</p>
+                                <p className="text-base font-extrabold text-[#0B3B91] uppercase tracking-[0.08em] mb-2">Use Case</p>
                                 <p className="text-sm text-gray-700">{selectedRequest.useCase || 'No specific use case provided for this tool request.'}</p>
                             </div>
 
                             <div className="rounded-xl border border-blue-100 bg-gradient-to-br from-white via-blue-50/60 to-slate-50 p-4">
-                                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Business Justification</p>
+                                <p className="text-base font-extrabold text-[#0B3B91] uppercase tracking-[0.08em] mb-2">Business Justification</p>
                                 <p className="text-sm text-gray-700">{selectedRequest.justification || 'No business justification provided for this tool request.'}</p>
                             </div>
 
                             <div className="rounded-xl border border-blue-100 bg-gradient-to-br from-white via-blue-50/60 to-slate-50 p-4">
-                                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Equivalent Tools Found</p>
+                                <p className="text-base font-extrabold text-[#0B3B91] uppercase tracking-[0.08em] mb-3">Equivalent Tools Found</p>
                                 <div className="space-y-2">
                                     {(selectedRequest.equivalentTools && selectedRequest.equivalentTools.length > 0) ? (
                                         selectedRequest.equivalentTools.map((tool, idx) => (
@@ -1052,8 +1192,8 @@ export default function RequestsPage() {
                             </div>
 
                             <div className="rounded-xl border border-blue-100 bg-gradient-to-br from-white via-blue-50/60 to-slate-50 p-4">
-                                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Stakeholders</p>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <p className="text-base font-extrabold text-[#0B3B91] uppercase tracking-[0.08em] mb-3">Stakeholders</p>
+                                <div className="grid grid-cols-1 gap-4">
                                     <div>
                                         <label className="block text-xs font-semibold text-gray-600 mb-1.5">Business Domain Owner</label>
                                         <select
@@ -1079,7 +1219,7 @@ export default function RequestsPage() {
                                             <button
                                                 type="button"
                                                 onClick={() => handleStakeholderAction('businessDomainOwner', 'Approved')}
-                                                disabled={selectedRequestStakeholders?.businessDomainOwnerLocked}
+                                                disabled={!selectedRequestStakeholders?.businessDomainOwner || selectedRequestStakeholders?.businessDomainOwnerLocked}
                                                 className="px-2.5 py-1 rounded-md border border-emerald-200 text-emerald-700 bg-emerald-50 text-xs font-semibold hover:bg-emerald-100"
                                             >
                                                 Approve
@@ -1087,7 +1227,7 @@ export default function RequestsPage() {
                                             <button
                                                 type="button"
                                                 onClick={() => handleStakeholderAction('businessDomainOwner', 'Rejected')}
-                                                disabled={selectedRequestStakeholders?.businessDomainOwnerLocked}
+                                                disabled={!selectedRequestStakeholders?.businessDomainOwner || selectedRequestStakeholders?.businessDomainOwnerLocked}
                                                 className="px-2.5 py-1 rounded-md border border-red-200 text-red-700 bg-red-50 text-xs font-semibold hover:bg-red-100"
                                             >
                                                 Reject
@@ -1122,7 +1262,7 @@ export default function RequestsPage() {
                                             <button
                                                 type="button"
                                                 onClick={() => handleStakeholderAction('itDomainOwner', 'Approved')}
-                                                disabled={selectedRequestStakeholders?.itDomainOwnerLocked}
+                                                disabled={!selectedRequestStakeholders?.itDomainOwner || selectedRequestStakeholders?.itDomainOwnerLocked}
                                                 className="px-2.5 py-1 rounded-md border border-emerald-200 text-emerald-700 bg-emerald-50 text-xs font-semibold hover:bg-emerald-100"
                                             >
                                                 Approve
@@ -1130,7 +1270,7 @@ export default function RequestsPage() {
                                             <button
                                                 type="button"
                                                 onClick={() => handleStakeholderAction('itDomainOwner', 'Rejected')}
-                                                disabled={selectedRequestStakeholders?.itDomainOwnerLocked}
+                                                disabled={!selectedRequestStakeholders?.itDomainOwner || selectedRequestStakeholders?.itDomainOwnerLocked}
                                                 className="px-2.5 py-1 rounded-md border border-red-200 text-red-700 bg-red-50 text-xs font-semibold hover:bg-red-100"
                                             >
                                                 Reject
@@ -1144,7 +1284,7 @@ export default function RequestsPage() {
                             </div>
 
                             <div className="rounded-xl border border-blue-100 bg-gradient-to-br from-white via-blue-50/60 to-slate-50 p-4">
-                                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Business Validation</p>
+                                <p className="text-base font-extrabold text-[#0B3B91] uppercase tracking-[0.08em] mb-3">Business Validation</p>
                                 <div className="space-y-3">
                                     <div>
                                         <label className="block text-xs font-semibold text-gray-600 mb-1.5">ROI Justification</label>
@@ -1175,18 +1315,52 @@ export default function RequestsPage() {
                                     </div>
                                     <div>
                                         <label className="block text-xs font-semibold text-gray-600 mb-1.5">Finance Approval</label>
-                                        <input
-                                            type="text"
+                                        <select
                                             value={selectedRequestBusinessValidation?.financeApproval || ''}
                                             onChange={(e) => handleBusinessValidationChange('financeApproval', e.target.value)}
+                                            disabled={selectedRequestBusinessValidation?.financeApprovalLocked}
                                             className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                                        />
+                                        >
+                                            <option value="" disabled>Select</option>
+                                            {FINANCE_APPROVAL_MEMBERS.map((member) => (
+                                                <option key={member} value={member}>{member}</option>
+                                            ))}
+                                        </select>
+                                        <div className="mt-2 flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleFinanceApprovalAction('Assign')}
+                                                disabled={!selectedRequestBusinessValidation?.financeApproval || selectedRequestBusinessValidation?.financeApprovalLocked}
+                                                className="px-2.5 py-1 rounded-md border border-blue-200 text-blue-700 bg-blue-50 text-xs font-semibold hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                Assign
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleFinanceApprovalAction('Approved')}
+                                                disabled={!selectedRequestBusinessValidation?.financeApproval || selectedRequestBusinessValidation?.financeApprovalLocked}
+                                                className="px-2.5 py-1 rounded-md border border-emerald-200 text-emerald-700 bg-emerald-50 text-xs font-semibold hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                Approve
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleFinanceApprovalAction('Rejected')}
+                                                disabled={!selectedRequestBusinessValidation?.financeApproval || selectedRequestBusinessValidation?.financeApprovalLocked}
+                                                className="px-2.5 py-1 rounded-md border border-red-200 text-red-700 bg-red-50 text-xs font-semibold hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                Reject
+                                            </button>
+                                            <span className={`ml-auto text-[10px] px-2 py-1 rounded border font-bold uppercase tracking-wider ${getStakeholderStatusClasses(selectedRequestBusinessValidation?.financeApprovalStatus)}`}>
+                                                {selectedRequestBusinessValidation?.financeApprovalStatus || 'Not Assigned'}
+                                            </span>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
 
                             <div className="rounded-xl border border-blue-100 bg-gradient-to-br from-white via-blue-50/60 to-slate-50 p-4">
-                                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">TPRM Evaluation (Vendor Risk Assessment)</p>
+                                <p className="text-base font-extrabold text-[#0B3B91] uppercase tracking-[0.08em] mb-3">TPRM Evaluation (Vendor Risk Assessment)</p>
                                 <div className="space-y-3">
                                     <div>
                                         <label className="block text-xs font-semibold text-gray-600 mb-1.5">Vendor Name</label>
@@ -1196,6 +1370,19 @@ export default function RequestsPage() {
                                             onChange={(e) => handleTprmEvaluationChange('vendorName', e.target.value)}
                                             className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                                         />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Platform</label>
+                                        <select
+                                            value={selectedRequestTprmEvaluation?.category || ''}
+                                            onChange={(e) => handleTprmEvaluationChange('category', e.target.value)}
+                                            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                        >
+                                            <option value="" disabled>Select</option>
+                                            <option value="SaaS">SaaS</option>
+                                            <option value="Web">Web</option>
+                                            <option value="On-Prem">On-Prem</option>
+                                        </select>
                                     </div>
                                     <div>
                                         <label className="block text-xs font-semibold text-gray-600 mb-1.5">Risk Level</label>
@@ -1212,27 +1399,67 @@ export default function RequestsPage() {
                                     </div>
                                     <div>
                                         <label className="block text-xs font-semibold text-gray-600 mb-1.5">Compliance Status</label>
-                                        <input
-                                            type="text"
+                                        <select
                                             value={selectedRequestTprmEvaluation?.complianceStatus || ''}
                                             onChange={(e) => handleTprmEvaluationChange('complianceStatus', e.target.value)}
                                             className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                                        />
+                                        >
+                                            <option value="" disabled>Select</option>
+                                            <option value="Compliant">Compliant</option>
+                                            <option value="Partially Compliant">Partially Compliant</option>
+                                            <option value="Non-Compliant">Non-Compliant</option>
+                                            <option value="Pending Review">Pending Review</option>
+                                            <option value="Remediation Required">Remediation Required</option>
+                                        </select>
                                     </div>
                                     <div>
                                         <label className="block text-xs font-semibold text-gray-600 mb-1.5">Security Approval</label>
-                                        <input
-                                            type="text"
+                                        <select
                                             value={selectedRequestTprmEvaluation?.securityApproval || ''}
                                             onChange={(e) => handleTprmEvaluationChange('securityApproval', e.target.value)}
+                                            disabled={selectedRequestTprmEvaluation?.securityApprovalLocked}
                                             className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                                        />
+                                        >
+                                            <option value="" disabled>Select</option>
+                                            {SECURITY_APPROVAL_MEMBERS.map((member) => (
+                                                <option key={member} value={member}>{member}</option>
+                                            ))}
+                                        </select>
+                                        <div className="mt-2 flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSecurityApprovalAction('Assign')}
+                                                disabled={!selectedRequestTprmEvaluation?.securityApproval || selectedRequestTprmEvaluation?.securityApprovalLocked}
+                                                className="px-2.5 py-1 rounded-md border border-blue-200 text-blue-700 bg-blue-50 text-xs font-semibold hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                Assign
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSecurityApprovalAction('Approved')}
+                                                disabled={!selectedRequestTprmEvaluation?.securityApproval || selectedRequestTprmEvaluation?.securityApprovalLocked}
+                                                className="px-2.5 py-1 rounded-md border border-emerald-200 text-emerald-700 bg-emerald-50 text-xs font-semibold hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                Approve
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSecurityApprovalAction('Rejected')}
+                                                disabled={!selectedRequestTprmEvaluation?.securityApproval || selectedRequestTprmEvaluation?.securityApprovalLocked}
+                                                className="px-2.5 py-1 rounded-md border border-red-200 text-red-700 bg-red-50 text-xs font-semibold hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                Reject
+                                            </button>
+                                            <span className={`ml-auto text-[10px] px-2 py-1 rounded border font-bold uppercase tracking-wider ${getStakeholderStatusClasses(selectedRequestTprmEvaluation?.securityApprovalStatus)}`}>
+                                                {selectedRequestTprmEvaluation?.securityApprovalStatus || 'Not Assigned'}
+                                            </span>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
 
                             <div className="rounded-xl border border-blue-100 bg-gradient-to-br from-white via-blue-50/60 to-slate-50 p-4">
-                                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Procurement & Onboarding</p>
+                                <p className="text-base font-extrabold text-[#0B3B91] uppercase tracking-[0.08em] mb-3">Procurement & Onboarding</p>
                                 <p className="text-xs font-semibold text-gray-500 mb-3">Tracking</p>
                                 <div className="space-y-2.5">
                                     <label className="flex items-center gap-2 text-sm text-gray-700">
@@ -1277,8 +1504,7 @@ export default function RequestsPage() {
                             <button
                                 type="button"
                                 onClick={() => {
-                                    handleApprove(selectedRequest.id);
-                                    closeSidebar();
+                                    handleSubmitNewRequestReview();
                                 }}
                                 className="px-4 py-2 rounded-lg bg-blue-700 hover:bg-blue-800 text-white font-semibold text-sm"
                             >
