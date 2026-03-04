@@ -1192,7 +1192,7 @@ export default function RequestsPage() {
                             </div>
 
                             <div className="rounded-xl border border-blue-100 bg-gradient-to-br from-white via-blue-50/60 to-slate-50 p-4">
-                                <p className="text-base font-extrabold text-[#0B3B91] uppercase tracking-[0.08em] mb-3">Stakeholders</p>
+                                <p className="text-base font-extrabold text-[#0B3B91] uppercase tracking-[0.08em] mb-3">Ownership</p>
                                 <div className="grid grid-cols-1 gap-4">
                                     <div>
                                         <label className="block text-xs font-semibold text-gray-600 mb-1.5">Business Domain Owner</label>
