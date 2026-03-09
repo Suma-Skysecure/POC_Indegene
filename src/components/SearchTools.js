@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { Search, ChevronDown, AlertCircle, Shield, LayoutGrid, List } from "lucide-react";
+import { Search, ChevronDown, AlertCircle, Shield, LayoutGrid, List, Download } from "lucide-react";
 
 const ENDUSER_ALLOWED_CATEGORIES = ["Approved Softwares", "Internet", "Other Tools"];
 
@@ -23,6 +23,7 @@ export default function SearchTools() {
     const [error, setError] = useState("");
     const [viewMode, setViewMode] = useState("grid");
     const [logoAttemptById, setLogoAttemptById] = useState({});
+    const [exporting, setExporting] = useState(false);
 
     useEffect(() => {
         const handle = setTimeout(() => {
@@ -136,22 +137,75 @@ export default function SearchTools() {
         return `/user/request-new?${params.toString()}`;
     };
 
+    const handleExportExcel = async () => {
+        if (total === 0 || exporting) return;
+        try {
+            setExporting(true);
+            const XLSX = await import("xlsx");
+            const params = new URLSearchParams({
+                q: debouncedQuery,
+                category: selectedCategory,
+                type: selectedType,
+                license: selectedLicense,
+                sort: sortBy,
+                order: sortOrder,
+                limit: "50000",
+                offset: "0",
+            });
+            const response = await fetch(`/api/software?${params.toString()}`, { cache: "no-store" });
+            if (!response.ok) {
+                throw new Error(`Request failed with status ${response.status}`);
+            }
+            const payload = await response.json();
+            const allRows = Array.isArray(payload.items) ? payload.items : [];
+
+            const exportRows = allRows.map((tool) => ({
+                "Software Name": String(tool.softwareName || "-"),
+                "Version": String(tool.version || "-"),
+                "Manufacturer": String(tool.manufacturer || "-"),
+                "License Type": String(tool.licenseType || "-"),
+                "Category": getCategoryBadge(tool.category).label,
+                "Software Type": String(tool.softwareType || "-"),
+            }));
+
+            const worksheet = XLSX.utils.json_to_sheet(exportRows, { skipHeader: false });
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Search Tools");
+            XLSX.writeFile(workbook, `search-tools-${new Date().toISOString().slice(0, 10)}.xlsx`);
+        } catch {
+            setError("Failed to export software data");
+        } finally {
+            setExporting(false);
+        }
+    };
+
     return (
         <div className="space-y-10 max-w-7xl mx-auto pb-12">
-            <div className="flex items-center space-x-5">
-                <div className="bg-white p-3 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-center">
-                    <div className="w-8 h-8 bg-[#002D72] rounded-lg flex flex-col justify-center items-center gap-[3px] p-2">
-                        <div className="w-full h-[2.5px] bg-white rounded-full opacity-60" />
-                        <div className="w-full h-[2.5px] bg-white rounded-full" />
-                        <div className="w-full h-[2.5px] bg-white rounded-full opacity-60" />
+            <div className="flex items-start justify-between gap-4">
+                <div className="flex items-center space-x-5">
+                    <div className="bg-white p-3 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-center">
+                        <div className="w-8 h-8 bg-[#002D72] rounded-lg flex flex-col justify-center items-center gap-[3px] p-2">
+                            <div className="w-full h-[2.5px] bg-white rounded-full opacity-60" />
+                            <div className="w-full h-[2.5px] bg-white rounded-full" />
+                            <div className="w-full h-[2.5px] bg-white rounded-full opacity-60" />
+                        </div>
+                    </div>
+                    <div>
+                        <h1 className="text-2xl font-bold text-[#002D72] tracking-tight">Search Tools</h1>
+                        <p className="text-gray-500 text-sm font-medium">
+                            Browse and manage all purchased tools across the organization
+                        </p>
                     </div>
                 </div>
-                <div>
-                    <h1 className="text-2xl font-bold text-[#002D72] tracking-tight">Search Tools</h1>
-                    <p className="text-gray-500 text-sm font-medium">
-                        Browse and manage all purchased tools across the organization
-                    </p>
-                </div>
+                <button
+                    type="button"
+                    onClick={handleExportExcel}
+                    disabled={loading || total === 0 || exporting}
+                    className="inline-flex items-center rounded-lg bg-blue-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    <Download className="mr-2 h-4 w-4" />
+                    {exporting ? "Exporting..." : "Export Excel"}
+                </button>
             </div>
 
             <div className="bg-white p-6 rounded-2xl shadow-[0_4px_20px_-4px_rgba(0,45,114,0.08)] border border-gray-100 space-y-6">

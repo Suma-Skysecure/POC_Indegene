@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Search, Package, AlertCircle, Shield, LayoutGrid, List, Plus, X, Building2, UserRound, CalendarDays } from "lucide-react";
+import { Search, Package, AlertCircle, Shield, LayoutGrid, List, Plus, X, Building2, UserRound, CalendarDays, Download } from "lucide-react";
 import { useCatalogData } from "@/lib/useCatalogData";
 import { getCatalogLicenseMetricsByPosition } from "@/lib/licenseMetrics";
 import { computeRisk } from "@/lib/shadowIt";
@@ -317,6 +317,81 @@ export default function CatalogPage() {
         setSelectedTool(null);
     };
 
+    const getCategoryDisplayValue = (category) => getCategoryBadge(category).label;
+
+    const handleExportExcel = async () => {
+        if (displayTotal === 0) return;
+        try {
+            const XLSX = await import("xlsx");
+            const toSafeText = (value) => (value === null || value === undefined ? "" : String(value));
+            const toSafeNumber = (value) => {
+                const parsed = Number(value);
+                return Number.isFinite(parsed) ? parsed : 0;
+            };
+
+            const query = new URLSearchParams({
+                q: debouncedQuery,
+                category: selectedCategory,
+                type: selectedType,
+                license: selectedLicense,
+                sort: sortBy,
+                order: sortOrder,
+                limit: String(Math.max(total + removedToolIds.size + 10, 50000)),
+                offset: "0",
+            }).toString();
+
+            const response = await fetch(`/api/software?${query}`, { cache: "no-store" });
+            if (!response.ok) {
+                throw new Error(`Request failed with status ${response.status}`);
+            }
+
+            const payload = await response.json();
+            const fetchedItems = Array.isArray(payload.items) ? payload.items : [];
+            const exportSourceRows = fetchedItems.filter((tool) => !removedToolIds.has(tool.id));
+
+            const exportRows = exportSourceRows.map((tool) => {
+                const toolDetails = getToolDetails(tool) || {};
+                const softwareName = toSafeText(tool.softwareName || "-");
+                const manufacturer = toSafeText(tool.manufacturer || "-");
+                const categoryValue = toSafeText(getCategoryDisplayValue(tool.category));
+                const metrics = getCatalogLicenseMetricsByPosition(tool.rowIndex);
+                const totalLicenses = toSafeNumber(metrics.total);
+                const usedLicenses = toSafeNumber(metrics.used);
+                const availableLicenses = toSafeNumber(metrics.available);
+
+                return {
+                    // UI table columns (exact order first)
+                    "Tool Name / Software Name": softwareName,
+                    "Version": toSafeText(tool.version || "-"),
+                    "Vendor / Manufacturer": manufacturer,
+                    "License Type": toSafeText(tool.licenseType || "-"),
+                    "TRPM Status / Category": categoryValue,
+                    "Total": totalLicenses,
+                    "Used": usedLicenses,
+                    "Available": availableLicenses,
+                    "Software Type": toSafeText(tool.softwareType || "-"),
+                    // Tool details columns (appended after UI columns)
+                    "Description": toSafeText(toolDetails.description || "-"),
+                    "Platform": toSafeText(toolDetails.categoryType || "-"),
+                    "Business Domain Owner": toSafeText(toolDetails.businessOwner || "-"),
+                    "IT Owner": toSafeText(toolDetails.itOwner || "-"),
+                    "Risk Level": toSafeText(toolDetails.riskLevel || "-"),
+                    "Created Date": toSafeText(toolDetails.createdDate || "-"),
+                    "Last Certified Date": toSafeText(toolDetails.lastCertifiedDate || "-"),
+                };
+            });
+
+            const worksheet = XLSX.utils.json_to_sheet(exportRows, { skipHeader: false });
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Tools Catalogue");
+
+            const fileName = `tools-catalog-${new Date().toISOString().slice(0, 10)}.xlsx`;
+            XLSX.writeFile(workbook, fileName);
+        } catch {
+            setActionToast("Failed to export Excel");
+        }
+    };
+
     const selectedToolDetails = getToolDetails(selectedTool);
 
     return (
@@ -331,14 +406,25 @@ export default function CatalogPage() {
                     </div>
                     <p className="text-gray-500 mt-1 ml-11">Browse and manage all purchased tools across the organization</p>
                 </div>
-                <button
-                    type="button"
-                    onClick={() => setIsAddToolOpen(true)}
-                    className="inline-flex items-center px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg font-medium transition-colors shadow-sm"
-                >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add Tool
-                </button>
+                <div className="flex items-center gap-3">
+                    <button
+                        type="button"
+                        onClick={handleExportExcel}
+                        disabled={displayTotal === 0}
+                        className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 font-medium transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        <Download className="w-4 h-4 mr-2" />
+                        Export Excel
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setIsAddToolOpen(true)}
+                        className="inline-flex items-center px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg font-medium transition-colors shadow-sm"
+                    >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Add Tool
+                    </button>
+                </div>
             </div>
 
             <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 flex flex-col xl:flex-row gap-4 items-center justify-between">
